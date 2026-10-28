@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 11 de 12 concluídas | API do MVP pronta, documentada e em container, com CI verde no GitHub Actions; próximo: README final |
+| — | — | — | — |
 
 ## Pronto para implementar
 
@@ -20,7 +20,8 @@
 
 | Feature | Próximo passo |
 |---|---|
-| — | — |
+| API Cadastro MVP: review da branch e QA | Multi-review da feature e QA contra o PRD, rodando os exemplos do README contra o Compose |
+| `Cache-Control: no-store` nas respostas de token e nas leituras autenticadas | Primeira correção prevista; ver *Notas* |
 
 ## Bloqueado
 
@@ -32,7 +33,7 @@
 
 | Feature | Data | Pasta | Release |
 |---|---|---|---|
-| — | — | — | — |
+| API Cadastro MVP: cadastro, sessão, perfil, administração, saúde, OpenAPI, containers, CI e documentação (12 de 12 tarefas) | 2026-10-28 | — | Sem release; integrado na `main` |
 
 ## Notas
 
