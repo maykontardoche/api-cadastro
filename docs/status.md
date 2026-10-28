@@ -8,13 +8,13 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| — | — | — | — |
+| API Cadastro MVP | — | 1 de 12 concluídas | Fundação pronta (TypeScript, tooling, env, `/health/live`); próximo: persistência |
 
 ## Pronto para implementar
 
 | Feature | Pasta | Depende de |
 |---|---|---|
-| API Cadastro MVP (0 de 12 tarefas) | `tasks/prd-api-cadastro-mvp/` | — (começar pela 1.0) |
+| — | — | — |
 
 ## Planejado
 
@@ -36,4 +36,4 @@
 
 ## Notas
 
-- <decisões e avisos que valem para várias features; decisão de arquitetura vira ADR>
+- Decisões aceitas: ADR-0001 (monólito modular) e ADR-0002 (TypeScript + Prisma 7.10.1).
