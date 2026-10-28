@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 3 de 12 concluídas | Fundação, persistência e camada HTTP (erros, logs, rate limit, CORS) prontas; próximo: cadastro |
+| API Cadastro MVP | — | 4 de 12 concluídas | Cadastro e Swagger (`/docs`) prontos sobre a fundação, persistência e camada HTTP; próximo: login |
 
 ## Pronto para implementar
 
@@ -36,4 +36,4 @@
 
 ## Notas
 
-- Decisões aceitas: ADR-0001 (monólito modular) e ADR-0002 (TypeScript + Prisma 7.10.1).
+- Decisões aceitas: ADR-0001 (monólito modular), ADR-0002 (TypeScript + Prisma 7.10.1) e ADR-0004 (OpenAPI gerado das declarações de rota).

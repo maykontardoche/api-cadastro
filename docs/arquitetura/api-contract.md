@@ -5,8 +5,9 @@
 > **Consulte antes de criar endpoint novo**, para não duplicar.
 > **Atualize ao criar ou alterar endpoint, na mesma mudança que o código.**
 >
-> Fonte gerada: `/openapi.json`, gerado dos schemas Zod (planejado). Até lá, este registro é a
-> única fonte.
+> Fonte gerada: `GET /openapi.json` (OpenAPI 3.1), com o Swagger UI em `GET /docs`. Os dois saem
+> das mesmas declarações que montam as rotas (ADR-0004). Este registro resume o contrato e as
+> regras; em caso de dúvida sobre um campo, o `/openapi.json` vence.
 
 ## Convenções
 
@@ -78,6 +79,29 @@ detalhes internos.
 |--------|----------|-----------|------------------|------------|
 | GET | `/health/live` | Sem body → **200** `{ status: "ok" }`. Não consulta nenhuma dependência. Idempotência: natural (leitura). ✅ | pública | MVP · RF-28 |
 | GET | `/health/ready` | Sem body → **200** `{ status: "ok", checks: { database: "ok" } }` quando o banco responde; **503** `{ status: "unavailable", checks: { database: "unavailable" } }` quando falha ou não responde em 2 s. O corpo nunca traz erro, host nem connection string. Idempotência: natural (leitura). ✅ | pública | MVP · RF-29, RF-30 |
+
+---
+
+## Auth
+
+Prefixo `/api/v1/auth`. Rotas de credencial compartilham um limite próprio, de 20 requisições a
+cada 15 min por IP, somado ao limite global.
+
+| Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
+|--------|----------|-----------|------------------|------------|
+| POST | `/api/v1/auth/register` | `{ name, email, password }` (body estrito: qualquer outro campo, inclusive `role`, dá **400** `unrecognized_key`) → **201** `{ data: PublicUser }`. `email` é normalizado (trim + minúsculas); `name` com trim, de 2 a 100 caracteres; `password` de 15 a 128 caracteres (code points, após NFKC), sem composição, e recusada com `common_password` se estiver na lista de senhas comuns. Sempre cria `role: "USER"`. **409** `EMAIL_TAKEN` se o e-mail já existe, inclusive em conta excluída. **429** `RATE_LIMITED`. A resposta nunca traz senha nem hash. Idempotência: não idempotente; repetir dá 409. ✅ | pública | MVP · RF-01–RF-06 |
+
+`PublicUser`: `{ id: uuid, name, email, role: "USER" | "ADMIN", createdAt, updatedAt }`, com
+instantes em ISO 8601 UTC.
+
+---
+
+## Documentação
+
+| Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
+|--------|----------|-----------|------------------|------------|
+| GET | `/openapi.json` | Documento OpenAPI 3.1 de todas as rotas. ✅ | pública | MVP · RF-31 |
+| GET | `/docs` | Swagger UI: lista os endpoints e permite testá-los ("Try it out"). ✅ | pública | MVP · RF-32 |
 
 ---
 

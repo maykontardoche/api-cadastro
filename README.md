@@ -3,12 +3,18 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** A fundação, a persistência e a camada HTTP estão prontas. Cadastro,
-> login, sessões, administração de usuários e a documentação OpenAPI ainda estão sendo
-> construídos. Este README descreve só o que já existe e funciona hoje.
+> **Status: em desenvolvimento.** A fundação, a camada HTTP, o cadastro de usuários e a
+> documentação interativa estão prontos. Login, sessões e administração de usuários ainda estão
+> sendo construídos. Este README descreve só o que já existe e funciona hoje.
 
 ## O que já funciona
 
+- **Cadastro de usuários** (`POST /api/v1/auth/register`): sempre cria o papel `USER`, guarda
+  a senha com Argon2id e recusa e-mail repetido com `409`. A senha tem de 15 a 128
+  caracteres, sem regra de composição, e é recusada se estiver numa lista de senhas comuns.
+- **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
+  OpenAPI 3.1 fica em `/openapi.json` e é gerado do próprio código, então não diverge do
+  comportamento.
 - Validação do ambiente na inicialização: a API não sobe com configuração inválida e o erro
   mostra só o nome da variável, nunca o valor.
 - Persistência em PostgreSQL 17 com schema versionado por migrations (Prisma).
@@ -25,11 +31,10 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Cadastro e login com senha protegida por Argon2id.
-- Sessão com access token curto e refresh token rotativo, com detecção de reutilização.
+- Login, com access token curto e refresh token rotativo com detecção de reutilização.
+- Perfil próprio e troca de senha.
 - Perfis `USER` e `ADMIN`, com autorização sempre no servidor.
 - Administração de usuários com paginação, busca e exclusão lógica.
-- Documentação OpenAPI com Swagger UI.
 - Containers da aplicação e integração contínua no GitHub Actions.
 
 ## Stack
@@ -70,9 +75,23 @@ npm run db:deploy
 npm run dev                  # http://localhost:3000
 ```
 
+### Testando pelo navegador
+
+Abra **http://localhost:3000/docs**, escolha um endpoint, clique em **Try it out** e depois em
+**Execute**. O corpo de exemplo já vem preenchido.
+
+### Testando pelo terminal
+
+No PowerShell, use `curl.exe`, porque `curl` sozinho é outro comando:
+
 ```bash
 curl http://localhost:3000/health/live    # {"status":"ok"}
 curl http://localhost:3000/health/ready   # {"status":"ok","checks":{"database":"ok"}}
+
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ana Souza","email":"ana@example.com","password":"uma frase longa que so eu sei"}'
+# 201 {"data":{"id":"…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}}
 ```
 
 As credenciais do `compose.yaml` servem só para os bancos locais descartáveis.
@@ -104,10 +123,13 @@ npm run build
 src/
   app.ts            monta o Express sem abrir porta (usado pelos testes)
   server.ts         bootstrap, conexão com o banco e encerramento
+  api-routes.ts     liga os serviços às rotas de /api/v1
   config/           validação do ambiente
   db/               client do banco
-  modules/          módulos de negócio (health por enquanto)
+  http/             erros, logs, validação, rate limit, OpenAPI e declaração de rotas
+  modules/          auth, users e health
 prisma/             schema e migrations
+scripts/            geração da lista de senhas comuns
 tests/              unit/, integration/ e helpers/
 docs/               ADRs, contrato da API e status
 ```
