@@ -1,13 +1,11 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { createApp } from '../../../src/app.js';
+import { buildTestApp } from '../../helpers/app.js';
 
 describe('GET /health/live', () => {
   // A check that always fails proves liveness does not depend on the database.
-  const app = createApp({
-    checkDatabase: () => Promise.reject(new Error('database is down')),
-  });
+  const app = buildTestApp({ checkDatabase: () => Promise.reject(new Error('database is down')) });
 
   it('responds 200 even when the database is down', async () => {
     const response = await request(app).get('/health/live');

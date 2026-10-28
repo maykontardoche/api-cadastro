@@ -29,7 +29,45 @@ describe('parseEnv', () => {
       JWT_ISSUER: 'api-cadastro',
       JWT_AUDIENCE: 'api-cadastro-client',
       REFRESH_TOKEN_TTL_DAYS: 30,
+      LOG_LEVEL: 'info',
+      CORS_ORIGINS: [],
+      TRUST_PROXY: false,
     });
+  });
+
+  it('parses CORS_ORIGINS into normalized origins', () => {
+    const env = parseEnv({
+      ...required,
+      CORS_ORIGINS: ' http://localhost:5173/ , https://app.example.com/path ',
+    });
+
+    expect(env.CORS_ORIGINS).toEqual(['http://localhost:5173', 'https://app.example.com']);
+  });
+
+  it.each(['not-an-origin', 'javascript:alert(1)', 'http://ok.example,ftp://files.example'])(
+    'rejects CORS_ORIGINS=%s',
+    (origins) => {
+      expect(captureError({ ...required, CORS_ORIGINS: origins }).variables).toEqual([
+        'CORS_ORIGINS',
+      ]);
+    },
+  );
+
+  it.each([
+    ['false', false],
+    ['0', 0],
+    ['1', 1],
+    ['2', 2],
+  ])('parses TRUST_PROXY=%s', (value, expected) => {
+    expect(parseEnv({ ...required, TRUST_PROXY: value }).TRUST_PROXY).toBe(expected);
+  });
+
+  it.each(['true', '-1', '100', 'yes'])('rejects TRUST_PROXY=%s', (value) => {
+    expect(captureError({ ...required, TRUST_PROXY: value }).variables).toEqual(['TRUST_PROXY']);
+  });
+
+  it('rejects an unknown LOG_LEVEL', () => {
+    expect(captureError({ ...required, LOG_LEVEL: 'verbose' }).variables).toEqual(['LOG_LEVEL']);
   });
 
   it('coerces numeric variables', () => {

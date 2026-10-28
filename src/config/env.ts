@@ -12,6 +12,28 @@ const envSchema = z.object({
   JWT_ISSUER: z.string().min(1).default('api-cadastro'),
   JWT_AUDIENCE: z.string().min(1).default('api-cadastro-client'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // Comma-separated allowlist, normalized to bare origins (scheme + host + port).
+  CORS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin))),
+  // `false` (default) or the number of proxy hops to trust; never `true`, which trusts any client.
+  TRUST_PROXY: z
+    .union([
+      z.literal('false').transform(() => false as const),
+      z
+        .string()
+        .regex(/^\d{1,2}$/)
+        .transform(Number),
+    ])
+    .default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

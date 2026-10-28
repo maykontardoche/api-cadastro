@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { createApp } from '../../../src/app.js';
+import { buildTestApp } from '../../helpers/app.js';
 import { createPrismaClient, pingDatabase } from '../../../src/db/prisma.js';
 import { createTestPrisma } from '../../helpers/db.js';
 
@@ -16,7 +16,7 @@ describe('GET /health/ready', () => {
   });
 
   it('responds 200 when the database answers', async () => {
-    const app = createApp({ checkDatabase: () => pingDatabase(prisma) });
+    const app = buildTestApp({ checkDatabase: () => pingDatabase(prisma) });
 
     const response = await request(app).get('/health/ready');
 
@@ -25,7 +25,7 @@ describe('GET /health/ready', () => {
   });
 
   it('responds 503 without leaking details when the database is unreachable', async () => {
-    const app = createApp({ checkDatabase: () => pingDatabase(unreachable) });
+    const app = buildTestApp({ checkDatabase: () => pingDatabase(unreachable) });
 
     const response = await request(app).get('/health/ready');
 
@@ -37,7 +37,7 @@ describe('GET /health/ready', () => {
   });
 
   it('responds 503 when the database does not answer within the deadline', async () => {
-    const app = createApp({
+    const app = buildTestApp({
       checkDatabase: () => new Promise<void>(() => undefined),
       readinessTimeoutMs: 50,
     });
