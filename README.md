@@ -2,8 +2,8 @@
 
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. É um projeto
 de portfólio com quatro metas: ser segura por padrão, persistente, testada e reproduzível a
-partir de um clone limpo. Tudo o que este README afirma foi verificado; o que não foi medido não
-é citado.
+partir de um clone limpo. Os comandos e as respostas deste README foram executados a partir de
+um clone limpo, e nenhum número de desempenho é citado sem medição.
 
 ## Sumário
 
@@ -71,7 +71,8 @@ cd api-cadastro
 npm ci
 ```
 
-**2. Crie o `.env`** a partir do exemplo:
+**2. Crie o `.env`** a partir do exemplo. Ele fica fora do Git (`.gitignore`); só o
+`.env.example`, sem segredos, é versionado.
 
 ```bash
 cp .env.example .env
@@ -88,8 +89,9 @@ pelo menos 32 bytes; a API não sobe sem ele.
 node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
 ```
 
-**4. Suba o banco e aplique as migrations.** As migrations criam o schema num banco vazio e nunca
-apagam dados.
+**4. Suba o banco e aplique as migrations.** O `db:deploy` (`prisma migrate deploy`) só aplica as
+migrations versionadas que faltam; ele nunca reseta o banco. Os dados ficam no volume `db-data`
+do Compose e sobrevivem a reinícios da API e do container.
 
 ```bash
 docker compose up -d --wait db
@@ -108,19 +110,23 @@ A saída esperada é `Admin account created.` Depois, **apague o `ADMIN_PASSWORD
 Rodar o comando de novo não altera a senha de quem já existe. Se o e-mail já pertence a um USER, ele
 só é promovido quando `ADMIN_PASSWORD` é a senha daquela conta. Como o cadastro é público,
 alguém pode ter se cadastrado antes com esse e-mail; nesse caso o comando recusa e você deve usar
-outro.
+outro. O e-mail de uma conta excluída também é recusado, porque continua reservado.
 
 **6. Inicie a API:**
 
 ```bash
-npm run dev          # recarrega ao salvar; ou: npm run build && npm start
+npm run dev          # recarrega ao salvar
 ```
+
+Para rodar a versão compilada, use `npm run build` e depois `npm start`.
 
 Ela responde em `http://localhost:3000`. O log mostra `api listening` quando está pronta.
 
 ## Rodando tudo em containers
 
-Com o `.env` preenchido (pelo menos o `JWT_ACCESS_SECRET`), API e banco sobem pelo Compose. Assim não é preciso ter Node.js na máquina:
+Com o `.env` preenchido (pelo menos o `JWT_ACCESS_SECRET`), API e banco sobem pelo Compose, e o
+Node.js só é usado para gerar o segredo. Sem ele, qualquer gerador serve, por exemplo
+`openssl rand -base64 48`.
 
 ```bash
 docker compose up -d --wait db
@@ -139,7 +145,8 @@ docker compose run --rm seed-admin   # primeiro administrador, com as ADMIN_* do
   só de leitura e sem capabilities do Linux. O healthcheck do container usa o `/health/ready`.
 - `DB_PASSWORD` troca a senha do banco local, mas só vale para um volume novo, porque o
   PostgreSQL guarda a senha na primeira inicialização. Use só letras, números, `-` e `_`, porque
-  ela entra na URL de conexão sem escape.
+  ela entra na URL de conexão sem escape. Para rodar a API fora do container, troque a senha
+  também no `DATABASE_URL` do `.env`.
 
 Para parar: `docker compose stop`. Para apagar o banco local e começar de novo, veja o runbook
 [`docs/runbooks/reset-banco-local.md`](docs/runbooks/reset-banco-local.md).
@@ -161,8 +168,9 @@ As rotas de **Users (admin)** exigem o login de um ADMIN; com um USER, a respost
 ## Exemplos com curl
 
 Os exemplos usam a API em `http://localhost:3000` e as respostas foram encurtadas com `…`. Os
-tokens aparecem como `<accessToken>` e `<refreshToken>`: copie o valor da resposta do login. No
-PowerShell, use `curl.exe` (`curl` sozinho é outro comando) ou os exemplos de
+tokens aparecem como `<accessToken>` e `<refreshToken>`: copie o valor da resposta do login. Os
+comandos estão em sintaxe bash (Linux, macOS ou Git Bash no Windows). No PowerShell, a quebra de
+linha com `\` e as aspas do JSON não funcionam do mesmo jeito: use os exemplos de
 [PowerShell](#no-powershell) abaixo.
 
 **Cadastro**
@@ -176,7 +184,7 @@ curl -i -X POST http://localhost:3000/api/v1/auth/register \
 ```text
 HTTP/1.1 201 Created
 X-Request-Id: 9b2f…
-{"data":{"id":"019a…","name":"Ana Souza","email":"ana@example.com","role":"USER","createdAt":"…","updatedAt":"…"}}
+{"data":{"id":"01a1…","name":"Ana Souza","email":"ana@example.com","role":"USER","createdAt":"…","updatedAt":"…"}}
 ```
 
 Repetir o mesmo e-mail dá `409` com `"code":"EMAIL_TAKEN"`. Uma senha curta ou comum dá `400`
@@ -191,7 +199,7 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
 ```
 
 ```text
-{"data":{"accessToken":"eyJ…","tokenType":"Bearer","expiresIn":900,"refreshToken":"…","user":{"id":"019a…","name":"Ana Souza",…}}}
+{"data":{"accessToken":"eyJ…","tokenType":"Bearer","expiresIn":900,"refreshToken":"…","user":{"id":"01a1…","name":"Ana Souza",…}}}
 ```
 
 Senha errada, e-mail desconhecido e conta excluída recebem a mesma resposta: `401` com
@@ -204,7 +212,7 @@ curl http://localhost:3000/api/v1/users/me -H "Authorization: Bearer <accessToke
 ```
 
 ```text
-{"data":{"id":"019a…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}}
+{"data":{"id":"01a1…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}}
 ```
 
 **Renovação da sessão**
@@ -241,7 +249,7 @@ curl "http://localhost:3000/api/v1/users?search=ana&limit=5&sortBy=name&order=as
 ```
 
 ```text
-{"data":[{"id":"019a…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}],"meta":{"page":1,"limit":5,"total":1,"totalPages":1}}
+{"data":[{"id":"01a1…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}],"meta":{"page":1,"limit":5,"total":1,"totalPages":1}}
 ```
 
 Com o token de um USER, a resposta é `403` com `"code":"FORBIDDEN"`.
@@ -286,6 +294,11 @@ Os testes cobrem os invariantes de segurança e concorrência que não podem que
 - nenhuma resposta e nenhum log contêm senha, hash ou token;
 - o documento OpenAPI e as rotas registradas são o mesmo conjunto.
 
+**Mudando o schema do banco:** edite `prisma/schema.prisma` e gere uma migration nova com
+`npm run db:migrate -- --name <nome>`. Esse comando usa o `prisma migrate dev` e é só para o
+banco local. O client é regenerado junto; para regenerá-lo sozinho, use `npm run db:generate`.
+Migration já aplicada não se edita: a correção vem numa migration nova.
+
 **Integração contínua:** o GitHub Actions roda a cada push e pull request. Um job executa a
 instalação, as migrations, o typecheck, o lint, a formatação, o build, os testes contra
 PostgreSQL 17 e o `npm audit`. Um segundo job builda a imagem, confere que ela não roda como
@@ -323,18 +336,20 @@ conformidade formal (LGPD, ISO ou outra).
   situações legítimas são tratadas como reutilização: um cliente que repete a renovação depois de
   perder a resposta, ou duas abas que renovam ao mesmo tempo. Nesses casos a cadeia é encerrada e
   é preciso entrar de novo.
-- **Access token até expirar:** logout, troca de senha e exclusão encerram as sessões de
-  renovação, mas um access token já emitido continua válido até expirar, por no máximo 15
-  minutos. A exclusão e o rebaixamento valem na hora, porque o usuário é relido a cada requisição.
+- **Access token até expirar:** logout e troca de senha encerram as sessões de renovação, mas um
+  access token já emitido continua válido até expirar, por no máximo 15 minutos. A exclusão e o
+  rebaixamento valem na hora, porque o usuário é relido a cada requisição: o token de uma conta
+  excluída passa a receber `401`, e o de um admin rebaixado, `403` nas rotas de admin.
 - **Rate limit em memória:** o contador vale para uma instância só. Mais de uma instância exige
   um store compartilhado.
 - **Lista local de senhas comuns:** tem 5.328 senhas de 15 a 128 caracteres, tiradas do SecLists.
   É menor que uma base de senhas vazadas, e não há consulta a serviço externo.
 - **Troca de e-mail sem confirmação:** o e-mail muda só com o access token, sem pedir a senha nem
   confirmar o endereço novo, porque não há envio de e-mail no MVP.
-- **Sem `Cache-Control: no-store`:** as respostas de token e as leituras autenticadas não mandam
-  `no-store`. O risco é baixo sem frontend, porque caches compartilhados não guardam respostas a
-  requisições com `Authorization`.
+- **Sem `Cache-Control: no-store`:** as respostas de token (login e refresh) e as leituras
+  autenticadas não mandam `no-store`. Nas leituras, caches compartilhados já não guardam
+  respostas a requisições com `Authorization`. Nas respostas de token, que são `POST`, o risco é
+  baixo, mas a RFC 6749 pede o `no-store`, e essa é a primeira correção prevista.
 - **Fora do MVP:**
   - recuperação de senha e verificação de e-mail;
   - reativação de conta excluída;
@@ -352,7 +367,7 @@ conformidade formal (LGPD, ISO ou outra).
 | Testes de integração falham ao conectar | O `db-test` não está no ar: `docker compose up -d --wait db-test`. |
 | `429` com `"code":"RATE_LIMITED"` | O limite das rotas de credencial é de 20 requisições a cada 15 min por IP. Espere a janela ou reinicie a API, porque o contador fica em memória. |
 | `401` em todas as rotas com cadeado | O access token expirou (15 min) ou foi copiado incompleto. Faça login de novo ou use o `/refresh`. |
-| `curl` no PowerShell pede parâmetros | No PowerShell, `curl` é um apelido de outro comando. Use `curl.exe` ou o `Invoke-RestMethod`. |
+| `curl` no PowerShell pede parâmetros | No Windows PowerShell 5.1, `curl` é um apelido de `Invoke-WebRequest`. Use os exemplos com `Invoke-RestMethod` ou rode os exemplos `curl` no Git Bash. |
 | `npm ci` reclama da versão do Node | O projeto exige Node 24.11 ou mais novo (`engines` no `package.json`). |
 
 ## Estrutura e documentação
@@ -362,13 +377,14 @@ src/
   app.ts            monta o Express sem abrir porta (usado pelos testes)
   server.ts         bootstrap, conexão com o banco e encerramento gracioso
   api-routes.ts     liga os serviços às rotas de /api/v1
-  admin-seed.ts     criação do primeiro administrador (scripts/seed-admin.ts é o comando)
+  admin-seed.ts     criação do primeiro administrador
+  scripts/          comandos executáveis, como o seed do admin
   config/           validação do ambiente
   db/               client do banco e transações
   http/             erros, logs, validação, rate limit, OpenAPI e declaração de rotas
   modules/          auth, users e health
 prisma/             schema e migrations
-scripts/            geração da lista de senhas comuns
+scripts/            (na raiz) geração da lista de senhas comuns
 tests/              unit/, integration/ e helpers/
 docs/               arquitetura, contrato da API, ADRs, runbooks e status
 ```

@@ -11,14 +11,16 @@ e ADMIN para a gestão de usuários.
 
 ```mermaid
 flowchart LR
-  client[Cliente HTTP / Swagger] -->|JSON| mw[Middlewares: requestId e log, helmet, rate limit, CORS, JSON 100 kB]
-  mw --> routes[Rotas declaradas com defineRoute]
+  client[Cliente HTTP / Swagger] -->|JSON| mw[Middlewares: requestId e log, helmet]
+  mw --> health["/health/live e /health/ready"]
+  mw --> api[Rate limit, CORS, JSON até 100 KiB]
+  api --> routes[Rotas declaradas com defineRoute]
   routes --> auth[access: autenticação + requireRole]
   auth --> validate[Validação Zod estrita]
   validate --> services[Serviços: auth, users]
   services --> repos[Repositórios Prisma]
   repos --> db[(PostgreSQL 17)]
-  routes -. mesmas declarações .-> openapi[/openapi.json e /docs/]
+  routes -. mesmas declarações .-> openapi["/openapi.json e /docs"]
 ```
 
 ## Componentes
