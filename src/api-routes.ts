@@ -43,12 +43,13 @@ export function createApiRoutes({
     sessions,
     tokens,
     passwords: { hash: hashPassword, verify: verifyPassword },
+    transaction: (work) => prisma.$transaction(work),
   });
   const authenticate = createAuthenticate({ tokens, users });
   const authLimiter = createRateLimiter(authRateLimit);
 
   return [
-    ...createAuthRoutes({ userService, authService, authLimiter }),
-    ...createUserRoutes({ authenticate }),
+    ...createAuthRoutes({ userService, authService, authLimiter, authenticate }),
+    ...createUserRoutes({ userService, authenticate }),
   ];
 }

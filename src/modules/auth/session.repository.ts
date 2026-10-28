@@ -34,6 +34,10 @@ export interface SessionRepository {
    * would survive a reuse detection or a "revoke all". Only valid inside `transaction`.
    */
   lockUser: (userId: string) => Promise<void>;
+  /** The credential a session may be granted on, read fresh (call after `lockUser`). */
+  readCredentialState: (
+    userId: string,
+  ) => Promise<{ passwordHash: string; deletedAt: Date | null } | null>;
   /** Runs `work` in one database transaction, with a repository bound to it. */
   transaction: <T>(work: (sessions: SessionRepository) => Promise<T>) => Promise<T>;
   /** A repository bound to a transaction opened elsewhere (e.g. one that also updates the user). */
@@ -88,6 +92,11 @@ function bind(db: DbClient, root: PrismaClient): SessionRepository {
       const key = SESSION_LOCK_PREFIX + userId;
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
     },
+    readCredentialState: (userId) =>
+      db.user.findUnique({
+        where: { id: userId },
+        select: { passwordHash: true, deletedAt: true },
+      }),
     // Already inside a transaction: reuse it instead of nesting.
     transaction: (work) =>
       db === root ? root.$transaction((tx) => work(bind(tx, root))) : work(repository),

@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 
+import { currentUserOf } from '../../http/current-user.js';
 import { AppError } from '../../http/errors.js';
 import { defineRoute, type RouteDefinition } from '../../http/route.js';
 import { emailSchema, nameSchema, publicUserSchema } from '../users/user.schema.js';
@@ -55,17 +56,26 @@ export const refreshTokenBodySchema = z
   })
   .meta({ id: 'RefreshTokenRequest' });
 
+export const changePasswordBodySchema = z
+  .strictObject({
+    currentPassword: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
+    newPassword: newPasswordSchema,
+  })
+  .meta({ id: 'ChangePasswordRequest' });
+
 export interface AuthRoutesDeps {
   userService: UserService;
   authService: AuthService;
   /** Shared by every credential route, so one client has one quota across all of them. */
   authLimiter: RequestHandler;
+  authenticate: RequestHandler;
 }
 
 export function createAuthRoutes({
   userService,
   authService,
   authLimiter,
+  authenticate,
 }: AuthRoutesDeps): RouteDefinition[] {
   return [
     defineRoute({
@@ -176,6 +186,36 @@ export function createAuthRoutes({
       handler: async ({ body }, _req, res) => {
         await authService.logout(body.refreshToken);
         res.status(204).end();
+      },
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/auth/change-password',
+      tags: ['Auth'],
+      summary: 'Troca a própria senha',
+      description:
+        'Exige a senha atual. A nova segue a política do cadastro. Em sucesso, encerra todas as sessões de renovação do usuário, inclusive a atual; o access token já emitido vale até expirar (até 15 min).',
+      schemas: { body: changePasswordBodySchema },
+      access: authenticate,
+      middlewares: [authLimiter],
+      success: { status: 204, description: 'Senha trocada e sessões encerradas.' },
+      errors: {
+        400: 'Dados inválidos ou nova senha fora da política (curta, longa ou comum).',
+        401: '`INVALID_CREDENTIALS`: senha atual incorreta. `UNAUTHORIZED`: token ausente ou inválido.',
+        429: 'Limite de tentativas nas rotas de credencial excedido.',
+      },
+      handler: async ({ body }, req, res) => {
+        const userId = currentUserOf(res).id;
+        try {
+          const { revokedSessions } = await authService.changePassword(userId, body);
+          req.log.info({ event: 'password_changed', userId, revokedSessions }, 'password changed');
+          res.status(204).end();
+        } catch (error) {
+          if (error instanceof AppError && error.code === 'INVALID_CREDENTIALS') {
+            req.log.info({ event: 'password_change_rejected', userId }, 'password change rejected');
+          }
+          throw error;
+        }
       },
     }),
   ];

@@ -31,8 +31,12 @@ export type RotationResult =
   | { outcome: 'invalid' };
 
 export interface SessionService {
-  /** Starts a session; a new login starts a new family, a rotation continues an existing one. */
-  create: (userId: string, familyId?: string) => Promise<CreatedSession>;
+  /**
+   * The only way to start a session family (login). Starts it only if the credential that was just verified is still the current
+   * one and the account still exists. Runs under the user lock, so a password change or a
+   * deletion that commits between the check and this call wins: the login gets `null`.
+   */
+  createForLogin: (userId: string, verifiedPasswordHash: string) => Promise<CreatedSession | null>;
   /** Accepts a refresh token at most once, replacing it with a new one in the same family. */
   rotate: (refreshToken: string) => Promise<RotationResult>;
   /** Ends the session of this token if it is still active. Silent either way. */
@@ -68,7 +72,15 @@ export function createSessionService({
   }
 
   return {
-    create: (userId, familyId = randomUUID()) => createIn(sessions, userId, familyId),
+    createForLogin: (userId, verifiedPasswordHash) =>
+      sessions.transaction(async (tx) => {
+        await tx.lockUser(userId);
+        const current = await tx.readCredentialState(userId);
+        if (!current || current.deletedAt || current.passwordHash !== verifiedPasswordHash) {
+          return null;
+        }
+        return createIn(tx, userId, randomUUID());
+      }),
 
     rotate: (refreshToken) =>
       sessions.transaction(async (tx): Promise<RotationResult> => {

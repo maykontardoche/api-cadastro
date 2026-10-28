@@ -4,7 +4,11 @@ import {
   createSessionRepository,
   type SessionRepository,
 } from '../../../src/modules/auth/session.repository.js';
-import { createSessionService } from '../../../src/modules/auth/session.service.js';
+import {
+  createSessionService,
+  type CreatedSession,
+  type SessionService,
+} from '../../../src/modules/auth/session.service.js';
 import { createTokenService, hashRefreshToken } from '../../../src/modules/auth/token.service.js';
 import { TEST_TOKEN_CONFIG } from '../../helpers/api.js';
 import { createTestPrisma, resetDb } from '../../helpers/db.js';
@@ -77,6 +81,13 @@ function setup() {
   return { service, arm: () => gated.arm() };
 }
 
+/** Users here have the placeholder hash "x"; a login session is granted against it. */
+async function startSession(service: SessionService, userId: string): Promise<CreatedSession> {
+  const session = await service.createForLogin(userId, 'x');
+  if (!session) throw new Error('setup failed: no session');
+  return session;
+}
+
 async function createUser(): Promise<string> {
   const user = await prisma.user.create({
     data: { name: 'Ana', email: `ana-${String(Date.now())}@example.com`, passwordHash: 'x' },
@@ -99,7 +110,7 @@ describe('session operations under forced interleavings', () => {
   it('replaying an old token while the newest one rotates still revokes the whole family', async () => {
     const { service, arm } = setup();
     const userId = await createUser();
-    const a = await service.create(userId);
+    const a = await startSession(service, userId);
     const b = await service.rotate(a.refreshToken);
     if (b.outcome !== 'rotated') throw new Error('setup failed');
     const { familyId } = await prisma.refreshSession.findUniqueOrThrow({
@@ -128,7 +139,7 @@ describe('session operations under forced interleavings', () => {
   it('revoking every session of a user also catches a rotation in flight', async () => {
     const { service, arm } = setup();
     const userId = await createUser();
-    const a = await service.create(userId);
+    const a = await startSession(service, userId);
 
     const gate = arm();
     const holder = service.rotate(a.refreshToken);
@@ -144,8 +155,8 @@ describe('session operations under forced interleavings', () => {
   it('revokeAllForUser joins a caller transaction: rolled back together with it', async () => {
     const { service } = setup();
     const userId = await createUser();
-    await service.create(userId);
-    await service.create(userId);
+    await startSession(service, userId);
+    await startSession(service, userId);
 
     await expect(
       prisma.$transaction(async (tx) => {
@@ -162,7 +173,7 @@ describe('session operations under forced interleavings', () => {
   it('a writer that skips the user lock (logout) revoking mid-rotation makes the claim fail closed', async () => {
     const { service } = setup();
     const userId = await createUser();
-    const a = await service.create(userId);
+    const a = await startSession(service, userId);
     const tokenHash = hashRefreshToken(a.refreshToken);
 
     // A logout-like write holds the session row, uncommitted, while the rotation starts.
@@ -193,7 +204,7 @@ describe('session operations under forced interleavings', () => {
   it('two rotations of the same token: one wins, the other is reuse, nothing stays active', async () => {
     const { service, arm } = setup();
     const userId = await createUser();
-    const a = await service.create(userId);
+    const a = await startSession(service, userId);
 
     const gate = arm();
     const first = service.rotate(a.refreshToken);

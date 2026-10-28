@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
+import type { Prisma } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
 import type { UserRepository } from '../users/user.repository.js';
 import { toPublicUser, type PublicUser } from '../users/user.schema.js';
@@ -30,7 +31,26 @@ export interface AuthService {
   /** The caller turns every outcome but `rotated` into the same 401 (and logs `reused`). */
   refresh: (refreshToken: string) => Promise<RefreshResult>;
   logout: (refreshToken: string) => Promise<void>;
+  /**
+   * Requires the current password (401 `INVALID_CREDENTIALS` otherwise), then replaces the hash
+   * and ends every refresh session of the user in one transaction. Access tokens already issued
+   * stay valid until they expire.
+   */
+  changePassword: (
+    userId: string,
+    input: ChangePasswordInput,
+  ) => Promise<{ revokedSessions: number }>;
 }
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/** Runs `work` in one database transaction. */
+export type TransactionRunner = <T>(
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) => Promise<T>;
 
 export interface PasswordHasher {
   hash: (plain: string) => Promise<string>;
@@ -42,6 +62,7 @@ export interface AuthServiceDeps {
   sessions: SessionService;
   tokens: TokenService;
   passwords: PasswordHasher;
+  transaction: TransactionRunner;
 }
 
 export function createAuthService({
@@ -49,6 +70,7 @@ export function createAuthService({
   sessions,
   tokens,
   passwords,
+  transaction,
 }: AuthServiceDeps): AuthService {
   // Verified against when the account does not exist, so every failed login costs one Argon2id
   // verification and response time does not reveal whether the email is registered. Built ahead
@@ -73,10 +95,10 @@ export function createAuthService({
         throw new AppError('INVALID_CREDENTIALS');
       }
 
-      const [accessToken, session] = await Promise.all([
-        tokens.signAccess(user.id),
-        sessions.create(user.id),
-      ]);
+      // The password may have changed (or the account been deleted) since it was checked.
+      const session = await sessions.createForLogin(user.id, user.passwordHash);
+      if (!session) throw new AppError('INVALID_CREDENTIALS');
+      const accessToken = await tokens.signAccess(user.id);
       return toLoginResult(accessToken, session.refreshToken, user);
     },
 
@@ -91,6 +113,25 @@ export function createAuthService({
     },
 
     logout: (refreshToken) => sessions.revoke(refreshToken),
+
+    async changePassword(userId, { currentPassword, newPassword }) {
+      const user = await users.findActiveWithCredentials(userId);
+      if (!user) throw new AppError('UNAUTHORIZED');
+      if (!(await passwords.verify(user.passwordHash, currentPassword))) {
+        throw new AppError('INVALID_CREDENTIALS');
+      }
+      // Argon2id runs before the transaction, so the user lock is held only for two writes.
+      const newHash = await passwords.hash(newPassword);
+      return transaction(async (tx) => {
+        // Lock order (ADR-0003): sessions first — that takes the user lock — then the user row.
+        const revokedSessions = await sessions.revokeAllForUser(userId, tx);
+        // Changed by a concurrent request since we checked it: roll back, nothing happened.
+        if (!(await users.bindTo(tx).replacePasswordHash(userId, user.passwordHash, newHash))) {
+          throw new AppError('INVALID_CREDENTIALS');
+        }
+        return { revokedSessions };
+      });
+    },
   };
 
   function toLoginResult(

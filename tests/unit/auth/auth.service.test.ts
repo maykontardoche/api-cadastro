@@ -22,7 +22,12 @@ const ana: User = {
 
 /** In-memory doubles that record which hash every verification ran against. */
 function setup(
-  options: { user?: User | null; correctPassword?: string; hashFailures?: number } = {},
+  options: {
+    user?: User | null;
+    correctPassword?: string;
+    hashFailures?: number;
+    credentialChangedMeanwhile?: boolean;
+  } = {},
 ) {
   const verifiedAgainst: string[] = [];
   let failuresLeft = options.hashFailures ?? 0;
@@ -41,14 +46,23 @@ function setup(
       );
     },
   };
+  const notUsed = () => Promise.reject(new Error('not used'));
   const users: UserRepository = {
-    create: () => Promise.reject(new Error('not used')),
+    create: notUsed,
     findByEmail: () => Promise.resolve(options.user === undefined ? ana : options.user),
-    findActiveById: () => Promise.reject(new Error('not used')),
+    findActiveById: notUsed,
+    findActiveWithCredentials: notUsed,
+    updateProfile: notUsed,
+    replacePasswordHash: notUsed,
+    bindTo: () => users,
   };
   const sessions: SessionService = {
-    create: () =>
-      Promise.resolve({ id: 'session-id', refreshToken: 'refresh-token', expiresAt: now }),
+    createForLogin: (_userId, verifiedPasswordHash) =>
+      Promise.resolve(
+        options.credentialChangedMeanwhile || verifiedPasswordHash !== ana.passwordHash
+          ? null
+          : { id: 'session-id', refreshToken: 'refresh-token', expiresAt: now },
+      ),
     rotate: () => Promise.reject(new Error('not used')),
     revoke: () => Promise.reject(new Error('not used')),
     revokeAllForUser: () => Promise.reject(new Error('not used')),
@@ -59,7 +73,10 @@ function setup(
     verifyAccess: () => Promise.reject(new Error('not used')),
     newRefresh: () => ({ token: 't', hash: 'h' }),
   };
-  return { service: createAuthService({ users, sessions, tokens, passwords }), verifiedAgainst };
+  return {
+    service: createAuthService({ users, sessions, tokens, passwords, transaction: notUsed }),
+    verifiedAgainst,
+  };
 }
 
 async function expectInvalidCredentials(promise: Promise<unknown>): Promise<void> {
@@ -96,6 +113,12 @@ describe('AuthService.login', () => {
 
     await expectInvalidCredentials(service.login({ email: 'x@example.com', password: 'p' }));
     expect(verifiedAgainst).toEqual([DECOY_HASH]);
+  });
+
+  it('refuses the login when the credential changed between the check and the session', async () => {
+    const { service } = setup({ credentialChangedMeanwhile: true });
+
+    await expectInvalidCredentials(service.login({ email: ana.email, password: 'right' }));
   });
 
   it('returns tokens and the public user on success, with expiresIn from the token config', async () => {

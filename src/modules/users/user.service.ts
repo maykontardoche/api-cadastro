@@ -1,6 +1,6 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
-import type { UserRepository } from './user.repository.js';
+import type { ProfileChanges, UserRepository } from './user.repository.js';
 import { toPublicUser, type PublicUser } from './user.schema.js';
 
 export interface RegisterInput {
@@ -11,6 +11,8 @@ export interface RegisterInput {
 
 export interface UserService {
   register: (input: RegisterInput) => Promise<PublicUser>;
+  /** Name and email only; role, id, password and dates are not reachable from here. */
+  updateSelf: (userId: string, changes: ProfileChanges) => Promise<PublicUser>;
 }
 
 export interface UserServiceDeps {
@@ -32,6 +34,18 @@ export function createUserService({ users, hashPassword }: UserServiceDeps): Use
       } catch (error) {
         // Email is the only unique column a new user can collide on; the database decides,
         // so two concurrent registrations with the same email cannot both succeed.
+        if (isUniqueViolation(error)) throw new AppError('EMAIL_TAKEN');
+        throw error;
+      }
+    },
+
+    async updateSelf(userId, changes) {
+      try {
+        const updated = await users.updateProfile(userId, changes);
+        // Deleted between authentication and this write: the account no longer exists.
+        if (!updated) throw new AppError('UNAUTHORIZED');
+        return toPublicUser(updated);
+      } catch (error) {
         if (isUniqueViolation(error)) throw new AppError('EMAIL_TAKEN');
         throw error;
       }
