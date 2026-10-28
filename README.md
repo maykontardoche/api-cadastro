@@ -117,8 +117,8 @@ Se o e-mail já for de um USER, ele só é promovido a ADMIN quando `ADMIN_PASSW
 daquela conta. Como o cadastro é público, outra pessoa pode ter se cadastrado antes com esse
 e-mail; nesse caso o comando recusa e você deve usar outro e-mail.
 
-No container, sem o `tsx`, use a versão compilada:
-`docker compose run --rm api node dist/scripts/seed-admin.js`.
+Com a API em container, o mesmo procedimento roda pelo serviço `seed-admin`, o único que recebe
+as variáveis `ADMIN_*`: `docker compose run --rm seed-admin`.
 
 ### Rodando tudo em containers
 
@@ -133,9 +133,17 @@ curl http://127.0.0.1:3000/health/ready
 ```
 
 As migrations nunca rodam sozinhas no `up`: o serviço `migrate` é um passo explícito e só aplica
-o que falta (`prisma migrate deploy`), sem apagar dados. Dentro do Compose o banco é o host `db`,
-então o `DATABASE_URL` do `.env`, que aponta para `127.0.0.1`, vale só para rodar a API fora do
-container. A API fica em `127.0.0.1:3000` e roda com o usuário `node`, não root.
+o que falta (`prisma migrate deploy`), sem apagar dados.
+
+- O container da API recebe só as variáveis que usa, lidas do `.env`. Sem `JWT_ACCESS_SECRET`
+  ele não sobe, e o log diz qual variável falta.
+- Dentro do Compose o banco é o host `db`, então o `DATABASE_URL` do `.env`, que aponta para
+  `127.0.0.1`, vale só para rodar a API fora do container.
+- A API fica em `127.0.0.1:3000` e roda com o usuário `node`, sem root, com o sistema de
+  arquivos só de leitura e sem capabilities do Linux.
+- `DB_PASSWORD` troca a senha do banco local, mas só vale para um volume novo: o Postgres guarda
+  a senha na primeira inicialização. Use só letras, números, `-` e `_`, porque ela entra na URL de
+  conexão sem escape.
 
 ### Testando pelo navegador
 
