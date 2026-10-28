@@ -1,7 +1,10 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  // Explicit, so the output does not depend on whether tsconfig.json is present when generating
+  // (without it Prisma emits `.ts` imports, which Node cannot resolve in dist/).
+  importFileExtension = "js"
 }
 
 datasource db {
