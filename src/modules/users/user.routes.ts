@@ -9,6 +9,7 @@ import {
   listUsersQuerySchema,
   nameSchema,
   publicUserSchema,
+  roleSchema,
   toPublicUser,
   usersPageSchema,
 } from './user.schema.js';
@@ -24,6 +25,11 @@ export const updateProfileBodySchema = z
   .meta({ id: 'UpdateProfileRequest' });
 
 const profileResponseSchema = z.object({ data: publicUserSchema });
+
+/** A malformed id is a 400; a well-formed id of a missing or deleted user is a 404. */
+const userIdParamsSchema = z.strictObject({ id: z.uuid() });
+
+const changeRoleBodySchema = z.strictObject({ role: roleSchema }).meta({ id: 'ChangeRoleRequest' });
 
 export interface UserRoutesDeps {
   userService: UserService;
@@ -87,6 +93,120 @@ export function createUserRoutes({ userService, authenticate }: UserRoutesDeps):
           'profile updated',
         );
         res.status(200).json({ data: user });
+      },
+    }),
+    // Admin routes on /users/:id come after /users/me, so 'me' is never read as an id.
+    defineRoute({
+      method: 'get',
+      path: '/users/:id',
+      tags: ['Users (admin)'],
+      summary: 'Consulta um usuário',
+      schemas: { params: userIdParamsSchema },
+      access: authenticate,
+      requireRole: 'ADMIN',
+      success: { status: 200, description: 'Perfil público.', schema: profileResponseSchema },
+      errors: {
+        400: 'id não é um UUID.',
+        404: '`NOT_FOUND`: não existe ou foi excluído.',
+      },
+      handler: async ({ params }, _req, res) => {
+        res.status(200).json({ data: await userService.getById(params.id) });
+      },
+    }),
+    defineRoute({
+      method: 'patch',
+      path: '/users/:id',
+      tags: ['Users (admin)'],
+      summary: 'Edita nome e e-mail de um usuário',
+      description: 'Só `name` e `email`. O papel muda por `PATCH /users/{id}/role`.',
+      schemas: { params: userIdParamsSchema, body: updateProfileBodySchema },
+      access: authenticate,
+      requireRole: 'ADMIN',
+      success: { status: 200, description: 'Usuário atualizado.', schema: profileResponseSchema },
+      errors: {
+        400: 'id inválido, campo não permitido ou nenhum campo enviado.',
+        404: '`NOT_FOUND`: não existe ou foi excluído.',
+        409: '`EMAIL_TAKEN`: o e-mail já pertence a outra conta.',
+      },
+      handler: async ({ params, body }, req, res) => {
+        const user = await userService.updateById(params.id, body);
+        req.log.info(
+          {
+            event: 'user_updated_by_admin',
+            actorId: currentUserOf(res).id,
+            targetId: user.id,
+            fields: Object.keys(body).sort(),
+          },
+          'user updated by admin',
+        );
+        res.status(200).json({ data: user });
+      },
+    }),
+    defineRoute({
+      method: 'patch',
+      path: '/users/:id/role',
+      tags: ['Users (admin)'],
+      summary: 'Muda o papel de um usuário',
+      description:
+        'Entre `USER` e `ADMIN`. O último administrador ativo não pode ser rebaixado, nem por ele mesmo. Vale na hora: o papel é relido a cada requisição.',
+      schemas: { params: userIdParamsSchema, body: changeRoleBodySchema },
+      access: authenticate,
+      requireRole: 'ADMIN',
+      success: { status: 200, description: 'Papel atualizado.', schema: profileResponseSchema },
+      errors: {
+        400: 'id inválido ou `role` fora de USER/ADMIN.',
+        404: '`NOT_FOUND`: não existe ou foi excluído.',
+        409: '`LAST_ADMIN`: rebaixaria o último administrador ativo.',
+      },
+      handler: async ({ params, body }, req, res) => {
+        const { user, previousRole } = await userService.changeRole(
+          currentUserOf(res).id,
+          params.id,
+          body.role,
+        );
+        if (previousRole !== user.role) {
+          req.log.info(
+            {
+              event: 'role_changed',
+              actorId: currentUserOf(res).id,
+              targetId: user.id,
+              from: previousRole,
+              to: user.role,
+            },
+            'role changed',
+          );
+        }
+        res.status(200).json({ data: user });
+      },
+    }),
+    defineRoute({
+      method: 'delete',
+      path: '/users/:id',
+      tags: ['Users (admin)'],
+      summary: 'Exclui um usuário (exclusão lógica)',
+      description:
+        'O usuário sai das listagens e consultas, não consegue entrar e tem todas as sessões encerradas; o e-mail continua reservado. O último administrador ativo não pode ser excluído. Repetir a exclusão dá 404.',
+      schemas: { params: userIdParamsSchema },
+      access: authenticate,
+      requireRole: 'ADMIN',
+      success: { status: 204, description: 'Usuário excluído e sessões encerradas.' },
+      errors: {
+        400: 'id não é um UUID.',
+        404: '`NOT_FOUND`: não existe ou já foi excluído.',
+        409: '`LAST_ADMIN`: excluiria o último administrador ativo.',
+      },
+      handler: async ({ params }, req, res) => {
+        const { revokedSessions } = await userService.softDelete(currentUserOf(res).id, params.id);
+        req.log.info(
+          {
+            event: 'user_deleted',
+            actorId: currentUserOf(res).id,
+            targetId: params.id,
+            revokedSessions,
+          },
+          'user deleted',
+        );
+        res.status(204).end();
       },
     }),
   ];

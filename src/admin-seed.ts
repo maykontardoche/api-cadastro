@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { PrismaClient } from './generated/prisma/client.js';
 import { newPasswordSchema } from './modules/auth/password.js';
+import { createUserRepository } from './modules/users/user.repository.js';
 import { emailSchema, nameSchema } from './modules/users/user.schema.js';
 
 /** No defaults on purpose: the first admin's credentials always come from whoever operates it. */
@@ -54,27 +55,28 @@ export async function seedAdmin({
     throw new AdminSeedError('ADMIN_EMAIL belongs to a deleted account; use another email');
   }
   if (existing?.role === 'ADMIN') return 'already-admin';
-  if (existing) {
-    if (!(await verifyPassword(existing.passwordHash, password))) {
-      throw new AdminSeedError(
-        'ADMIN_EMAIL is already registered with a different password; it was not promoted',
-      );
+  if (existing && !(await verifyPassword(existing.passwordHash, password))) {
+    throw new AdminSeedError(
+      'ADMIN_EMAIL is already registered with a different password; it was not promoted',
+    );
+  }
+  // Argon2id runs before the transaction, so the admin-set lock is held only for one write.
+  const passwordHash = existing ? existing.passwordHash : await hashPassword(password);
+
+  // Under the same admin-set lock as role changes and deletions, so a concurrent demotion cannot
+  // silently undo this promotion (or count admins while it is half done).
+  return prisma.$transaction(async (tx): Promise<AdminSeedOutcome> => {
+    await createUserRepository(prisma).bindTo(tx).lockAdminSet();
+    if (!existing) {
+      await tx.user.create({ data: { name, email, passwordHash, role: 'ADMIN' } });
+      return 'created';
     }
     // Conditional, so a deletion or a password change in between is not overridden.
-    const { count } = await prisma.user.updateMany({
-      where: {
-        id: existing.id,
-        passwordHash: existing.passwordHash,
-        deletedAt: null,
-        role: 'USER',
-      },
+    const { count } = await tx.user.updateMany({
+      where: { id: existing.id, passwordHash, deletedAt: null, role: 'USER' },
       data: { role: 'ADMIN' },
     });
     if (count !== 1) throw new AdminSeedError('The account changed while seeding; run it again');
     return 'promoted';
-  }
-  await prisma.user.create({
-    data: { name, email, passwordHash: await hashPassword(password), role: 'ADMIN' },
   });
-  return 'created';
 }

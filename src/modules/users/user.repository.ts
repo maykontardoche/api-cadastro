@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient, type User } from '../../generated/prisma/client.js';
+import { Prisma, type PrismaClient, type Role, type User } from '../../generated/prisma/client.js';
 import type { USER_SORT_FIELDS } from './user.schema.js';
 
 /** A user as seen by request handlers: the password hash never leaves the repository. */
@@ -47,6 +47,18 @@ export interface UserRepository {
    * the total can differ from the page by the rows changed in between (fine for an admin listing).
    */
   listActive: (filter: UserListFilter) => Promise<{ users: UserWithoutSecrets[]; total: number }>;
+  /**
+   * Serializes every change to the set of active admins until the transaction ends
+   * (`pg_advisory_xact_lock`), so two concurrent demotions or deletions cannot both see "one other
+   * admin left" and leave none. Lock order: take this before the user's session lock and before
+   * touching the user row. Only valid inside a transaction.
+   */
+  lockAdminSet: () => Promise<void>;
+  countActiveAdmins: () => Promise<number>;
+  /** Changes the role of an active user; `null` if there is no such user. */
+  setRole: (id: string, role: Role) => Promise<UserWithoutSecrets | null>;
+  /** Soft delete: marks an active user as deleted; returns whether one was. */
+  softDelete: (id: string) => Promise<boolean>;
   /** A repository bound to a transaction opened elsewhere. */
   bindTo: (tx: Prisma.TransactionClient) => UserRepository;
 }
@@ -61,7 +73,10 @@ function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
-function bind(db: DbClient): UserRepository {
+/** Namespaced advisory lock key; the session lock uses another prefix per user. */
+const ADMIN_SET_LOCK_KEY = 'users:admin-set';
+
+function bind(db: DbClient, root: PrismaClient): UserRepository {
   const active = { deletedAt: null };
   return {
     create: (data) => db.user.create({ data }),
@@ -117,10 +132,36 @@ function bind(db: DbClient): UserRepository {
       ]);
       return { users, total };
     },
-    bindTo: (tx) => bind(tx),
+    lockAdminSet: async () => {
+      if (db === root) throw new Error('lockAdminSet must run inside a transaction');
+      await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${ADMIN_SET_LOCK_KEY}, 0))`;
+    },
+    countActiveAdmins: () => db.user.count({ where: { role: 'ADMIN', ...active } }),
+    setRole: async (id, role) => {
+      try {
+        return await db.user.update({
+          where: { id, ...active },
+          data: { role },
+          omit: { passwordHash: true },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          return null;
+        }
+        throw error;
+      }
+    },
+    softDelete: async (id) => {
+      const { count } = await db.user.updateMany({
+        where: { id, ...active },
+        data: { deletedAt: new Date() },
+      });
+      return count === 1;
+    },
+    bindTo: (tx) => bind(tx, root),
   };
 }
 
 export function createUserRepository(prisma: PrismaClient): UserRepository {
-  return bind(prisma);
+  return bind(prisma, prisma);
 }

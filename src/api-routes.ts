@@ -1,3 +1,4 @@
+import type { TransactionRunner } from './db/transaction.js';
 import type { PrismaClient } from './generated/prisma/client.js';
 import {
   createRateLimiter,
@@ -37,13 +38,19 @@ export function createApiRoutes({
     tokens,
     refreshTtlDays,
   });
-  const userService = createUserService({ users, hashPassword });
+  const transaction: TransactionRunner = (work) => prisma.$transaction(work);
+  const userService = createUserService({
+    users,
+    hashPassword,
+    revokeAllSessions: (userId, tx) => sessions.revokeAllForUser(userId, tx),
+    transaction,
+  });
   const authService = createAuthService({
     users,
     sessions,
     tokens,
     passwords: { hash: hashPassword, verify: verifyPassword },
-    transaction: (work) => prisma.$transaction(work),
+    transaction,
   });
   const authenticate = createAuthenticate({ tokens, users });
   const authLimiter = createRateLimiter(authRateLimit);

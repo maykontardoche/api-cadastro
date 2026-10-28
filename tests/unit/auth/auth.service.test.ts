@@ -55,6 +55,10 @@ function setup(
     updateProfile: notUsed,
     replacePasswordHash: notUsed,
     listActive: notUsed,
+    lockAdminSet: notUsed,
+    countActiveAdmins: notUsed,
+    setRole: notUsed,
+    softDelete: notUsed,
     bindTo: () => users,
   };
   const sessions: SessionService = {

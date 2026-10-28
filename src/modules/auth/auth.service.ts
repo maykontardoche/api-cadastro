@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type { Prisma } from '../../generated/prisma/client.js';
+import type { TransactionRunner } from '../../db/transaction.js';
 import { AppError } from '../../http/errors.js';
 import type { UserRepository } from '../users/user.repository.js';
 import { toPublicUser, type PublicUser } from '../users/user.schema.js';
@@ -46,11 +46,6 @@ export interface ChangePasswordInput {
   currentPassword: string;
   newPassword: string;
 }
-
-/** Runs `work` in one database transaction. */
-export type TransactionRunner = <T>(
-  work: (tx: Prisma.TransactionClient) => Promise<T>,
-) => Promise<T>;
 
 export interface PasswordHasher {
   hash: (plain: string) => Promise<string>;
