@@ -19,10 +19,13 @@
   (`2026-10-28T12:00:00.000Z`).
 - **Nulabilidade:** campos opcionais ausentes não são enviados. Uma lista nunca é `null`.
 - **Enums de resposta:** `role` ∈ {`USER`, `ADMIN`}, **fechado**.
-- **Paginação:** offset com `?page=&limit=`; padrão 20, máximo 100. Envelope
-  `{ data: [], meta: { page, limit, total, totalPages } }`. Ordenação com `?sortBy=&order=`
-  restrita a uma whitelist, com desempate por `id`.
-- **Filtros:** `search` com até 100 caracteres. Um parâmetro desconhecido resulta em **400**.
+- **Paginação** ✅: offset com `?page=&limit=`; `page` de 1 a 10.000, `limit` padrão 20, de 1 a 100.
+  Envelope `{ data: [], meta: { page, limit, total, totalPages } }`. Página além do fim → `data: []`
+  com o `total` real. Ordenação com `?sortBy=&order=` restrita a uma whitelist, com desempate por
+  `id` (páginas nunca se sobrepõem).
+- **Filtros** ✅: `search` de 1 a 100 caracteres (com trim), sem diferenciar maiúsculas; `%`, `_`
+  e a barra invertida valem como caracteres literais. Parâmetro desconhecido, repetido ou fora dos limites →
+  **400**.
 - **Erro** ✅: envelope próprio
   `{ "error": { "code", "message", "requestId", "details?": [{ "field", "code" }] } }`. A
   mensagem vem em pt-BR e o `code` é estável, em inglês. Um erro inesperado nunca expõe stack,
@@ -114,12 +117,16 @@ instantes em ISO 8601 UTC.
 
 ## Users
 
-Prefixo `/api/v1/users`.
+Prefixo `/api/v1/users`. As rotas de administração exigem o papel `ADMIN`, relido do banco a cada
+requisição: um USER recebe **403** `FORBIDDEN`, e um admin rebaixado perde o acesso na hora, sem
+token novo. No OpenAPI, essas operações têm `x-required-role: ADMIN`, e o teste de contrato exige o
+403 para um USER em todas elas.
 
 | Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
 |--------|----------|-----------|------------------|------------|
 | GET | `/api/v1/users/me` | Sem body → **200** `{ data: PublicUser }` do dono do token. Resolvido pelo token, nunca por parâmetro. **401** `UNAUTHORIZED`. Idempotência: natural (leitura). ✅ | Bearer (qualquer papel) | MVP · RF-16 |
 | PATCH | `/api/v1/users/me` | `{ name?, email? }` (estrito, ao menos um campo; normalizados como no cadastro) → **200** `{ data: PublicUser }`. `role`, `id`, `password`, `passwordHash` e datas dão **400** `unrecognized_key`; body vazio dá **400** `empty_update`. **409** `EMAIL_TAKEN` se o e-mail é de outra conta, inclusive excluída. Mudar o e-mail não encerra sessões nem pede verificação (fora do MVP). Idempotência: natural (mesmo body, mesmo estado). ✅ | Bearer (qualquer papel) | MVP · RF-17, RF-18 |
+| GET | `/api/v1/users` | Query `page` (1), `limit` (20), `search?`, `sortBy` ∈ {`name`, `email`, `createdAt`} (`createdAt`), `order` ∈ {`asc`, `desc`} (`desc`) → **200** `{ data: PublicUser[], meta: { page, limit, total, totalPages } }`. Só usuários ativos: excluídos não aparecem nem contam no `total`. `search` casa parte do nome ou do e-mail. **400** para parâmetro desconhecido ou fora dos limites. **403** `FORBIDDEN` para USER. Idempotência: natural (leitura). ✅ | Bearer + `ADMIN` | MVP · RF-19–RF-22 |
 
 ---
 

@@ -3,10 +3,10 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** Todas as capacidades do usuário comum estão prontas: cadastro,
-> login, renovação de sessão, logout, perfil próprio e troca de senha, além da documentação
-> interativa. A administração de usuários ainda está sendo construída. Este README descreve só o
-> que já existe e funciona hoje.
+> **Status: em desenvolvimento.** Todas as capacidades do usuário comum estão prontas, além do
+> primeiro administrador e da listagem de usuários. Consulta, edição, mudança de papel e exclusão
+> de usuários pelo admin ainda estão sendo construídas. Este README descreve só o que já existe e
+> funciona hoje.
 
 ## O que já funciona
 
@@ -28,6 +28,12 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - **Troca de senha** (`POST /api/v1/auth/change-password`): exige a senha atual e encerra todas
   as sessões de renovação. Um login feito com a senha antiga no mesmo instante da troca não
   recebe sessão.
+- **Primeiro administrador** (`npm run db:seed:admin`): cria o ADMIN a partir de `ADMIN_NAME`,
+  `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe senha padrão; sem as variáveis, o comando falha.
+  Rodar de novo nunca altera a senha de quem já existe.
+- **Listagem de usuários** (`GET /api/v1/users`, só ADMIN): paginada (20 por página, até 100),
+  com busca por nome ou e-mail e ordenação por `name`, `email` ou `createdAt`. Usuários excluídos
+  não aparecem. Um USER recebe `403`, e um admin rebaixado perde o acesso na hora.
 - **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
   OpenAPI 3.1 fica em `/openapi.json` e é gerado do próprio código, então não diverge do
   comportamento.
@@ -47,8 +53,8 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Perfil `ADMIN`, com autorização sempre no servidor.
-- Administração de usuários com paginação, busca e exclusão lógica.
+- Administração de um usuário pelo ADMIN: consulta, edição, mudança de papel e exclusão lógica,
+  sem nunca deixar o sistema sem administrador.
 - Containers da aplicação e integração contínua no GitHub Actions.
 
 ## Stack
@@ -88,6 +94,20 @@ docker compose up -d db
 npm run db:deploy
 npm run dev                  # http://localhost:3000
 ```
+
+Para criar o primeiro administrador, preencha `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` no
+`.env` (a senha segue a mesma política do cadastro) e rode:
+
+```bash
+npm run db:seed:admin        # "Admin account created."
+```
+
+Depois, apague `ADMIN_PASSWORD` do `.env`. Rodar o comando de novo não altera a senha do admin.
+Se o e-mail já for de um USER, ele só é promovido a ADMIN quando `ADMIN_PASSWORD` é a senha
+daquela conta. Como o cadastro é público, outra pessoa pode ter se cadastrado antes com esse
+e-mail; nesse caso o comando recusa e você deve usar outro e-mail.
+
+No container, sem o `tsx`, use a versão compilada: `node dist/scripts/seed-admin.js`.
 
 ### Testando pelo navegador
 
