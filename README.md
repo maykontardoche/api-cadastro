@@ -4,8 +4,8 @@ API REST de cadastro e gestão de usuários em Node.js e TypeScript, com Postgre
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
 > **Status: em desenvolvimento.** Todas as funcionalidades da API do MVP estão prontas e
-> testadas, para USER e ADMIN. Faltam os containers da aplicação, a integração contínua e o README
-> final. Este README descreve só o que já existe e funciona hoje.
+> testadas, para USER e ADMIN, com imagem Docker e integração contínua. Falta o README final.
+> Este README descreve só o que já existe e funciona hoje.
 
 ## O que já funciona
 
@@ -55,12 +55,16 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - `X-Request-Id` em toda resposta, igual ao `requestId` do erro e do log.
 - Logs estruturados em JSON, sem headers, corpo, query string, senhas nem tokens.
 - Rate limit por IP, cabeçalhos de segurança (helmet), CORS restrito às origens configuradas e
-  corpo JSON limitado a 100 kB.
+  corpo JSON limitado a 100 KiB.
 - Testes unitários e de integração contra um PostgreSQL real.
+- Imagem Docker multi-stage, sem root e só com as dependências de produção, e o Compose subindo
+  API e banco juntos.
+- Integração contínua no GitHub Actions a cada push e pull request: instalação, migrations,
+  typecheck, lint, formatação, build, testes contra PostgreSQL 17, `npm audit` e um smoke test da
+  imagem no Compose. O Dependabot acompanha npm, GitHub Actions e a imagem base.
 
 ## Planejado para o MVP
 
-- Containers da aplicação e integração contínua no GitHub Actions.
 - README final, com o passo a passo completo e exemplos de todos os endpoints.
 
 ## Stack
@@ -113,7 +117,25 @@ Se o e-mail já for de um USER, ele só é promovido a ADMIN quando `ADMIN_PASSW
 daquela conta. Como o cadastro é público, outra pessoa pode ter se cadastrado antes com esse
 e-mail; nesse caso o comando recusa e você deve usar outro e-mail.
 
-No container, sem o `tsx`, use a versão compilada: `node dist/scripts/seed-admin.js`.
+No container, sem o `tsx`, use a versão compilada:
+`docker compose run --rm api node dist/scripts/seed-admin.js`.
+
+### Rodando tudo em containers
+
+Com o `.env` preenchido (pelo menos o `JWT_ACCESS_SECRET`), API e banco sobem pelo Compose, sem
+Node.js na máquina:
+
+```bash
+docker compose up -d --wait db
+docker compose run --rm migrate      # aplica as migrations pendentes (builda na primeira vez)
+docker compose up -d --wait api      # builda a imagem da API na primeira vez
+curl http://127.0.0.1:3000/health/ready
+```
+
+As migrations nunca rodam sozinhas no `up`: o serviço `migrate` é um passo explícito e só aplica
+o que falta (`prisma migrate deploy`), sem apagar dados. Dentro do Compose o banco é o host `db`,
+então o `DATABASE_URL` do `.env`, que aponta para `127.0.0.1`, vale só para rodar a API fora do
+container. A API fica em `127.0.0.1:3000` e roda com o usuário `node`, não root.
 
 ### Testando pelo navegador
 
