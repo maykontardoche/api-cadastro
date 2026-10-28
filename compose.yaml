@@ -1,0 +1,110 @@
+name: api-cadastro
+
+# Local, throwaway databases only. Credentials below are NOT for any shared or production use.
+# DB_PASSWORD can override the local default; db and api read the same value.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app_local_only}
+      POSTGRES_DB: api_cadastro
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U app -d api_cadastro']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Integration tests only: data lives in tmpfs and disappears with the container.
+  db-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_local_only
+      POSTGRES_DB: api_cadastro_test
+    ports:
+      - '127.0.0.1:5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U app -d api_cadastro_test']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The API. Each variable is listed on purpose, so the container gets only what it uses (never
+  # the ADMIN_* seed credentials). Values come from .env; JWT_ACCESS_SECRET has no default and the
+  # API refuses to start without it. Inside the network the database is `db`, not 127.0.0.1.
+  api:
+    build:
+      context: .
+      target: runtime
+    image: api-cadastro:local
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-app_local_only}@db:5432/api_cadastro?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-api-cadastro}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-api-cadastro-client}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    # Longer than the API's own 10 s shutdown deadline, so Docker never kills it mid-drain.
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  # Explicit migration step, never run on `up`: `docker compose run --rm migrate`.
+  # `prisma migrate deploy` only applies pending migrations; it never resets or drops data.
+  migrate:
+    profiles: ['tools']
+    build:
+      context: .
+      target: build
+    image: api-cadastro:build
+    user: node
+    command: ['npm', 'run', 'db:deploy']
+    environment:
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-app_local_only}@db:5432/api_cadastro?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # First administrator, run on demand: `docker compose run --rm seed-admin`. The only service
+  # that receives ADMIN_*; remove ADMIN_PASSWORD from .env afterwards.
+  seed-admin:
+    profiles: ['tools']
+    image: api-cadastro:local
+    command: ['node', 'dist/scripts/seed-admin.js']
+    environment:
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-app_local_only}@db:5432/api_cadastro?schema=public
+      ADMIN_NAME: ${ADMIN_NAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

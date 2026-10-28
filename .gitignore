@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+
+# Generated Prisma client (npm run db:generate)
+src/generated/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Database dumps (personal data and hashes); migrations are the only SQL that is versioned
+*.sql
+!prisma/migrations/**/*.sql
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Office temp files
+~$*

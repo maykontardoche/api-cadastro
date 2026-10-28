@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for minor and patch bumps of dev tooling; majors and runtime deps come one by one.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Pinned on purpose (exact Prisma 7.10.1, TypeScript 6.0.x for typescript-eslint):
+      # bumping them is a deliberate decision, not a routine update.
+      - dependency-name: prisma
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: '@prisma/*'
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # Node stays on the 24 LTS line.
+      - dependency-name: node
+        update-types: [version-update:semver-major]

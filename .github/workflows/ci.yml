@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# bash (not the bare default) adds -o pipefail, so a failing command inside a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Install, migrate, lint and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: api_cadastro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d api_cadastro_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Throwaway database of this job only; no real secret exists in CI.
+      DATABASE_URL: postgresql://app:ci_only_password@localhost:5432/api_cadastro_test?schema=public
+      TEST_DATABASE_URL: postgresql://app:ci_only_password@localhost:5432/api_cadastro_test?schema=public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - run: npm audit --audit-level=high
+
+  container:
+    name: Image and Compose smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Generate a job-only .env
+        run: |
+          {
+            echo "JWT_ACCESS_SECRET=$(openssl rand -base64 48)"
+            echo "LOG_LEVEL=info"
+          } > .env
+      - run: docker compose build api migrate
+      - name: Image runs as a non-root user
+        run: |
+          uid="$(docker run --rm --entrypoint id api-cadastro:local -u)"
+          test "$uid" -ne 0
+      - run: docker compose up -d --wait db
+      - run: docker compose run --rm migrate
+      - run: docker compose up -d --wait api
+      - name: Health checks answer 200
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/live
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+      - name: Register and log in through the container
+        run: |
+          post() {
+            curl --fail --silent --show-error -o /dev/null \
+              -H 'content-type: application/json' -d "$2" "http://127.0.0.1:3000/api/v1/auth/$1"
+          }
+          post register '{"name":"Usuario CI","email":"ci@example.com","password":"senha longa usada so no ci"}'
+          post login '{"email":"ci@example.com","password":"senha longa usada so no ci"}'
+      - name: Stops gracefully on SIGTERM
+        run: |
+          docker compose stop api
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq api)")" = "0"
+          docker compose logs --no-color api > api.log
+          grep -q 'shutting down' api.log
+      - name: API logs
+        if: failure()
+        run: docker compose logs api
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes

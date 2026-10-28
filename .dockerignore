@@ -1,0 +1,12 @@
+# Allowlist: the image is built only from what the build actually needs.
+*
+!package.json
+!package-lock.json
+!prisma.config.ts
+!prisma/
+!tsconfig.json
+!tsconfig.build.json
+!src/
+
+# Generated on install inside the image, never copied from the host.
+src/generated/
