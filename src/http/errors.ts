@@ -1,4 +1,4 @@
-import { ZodError, type core } from 'zod';
+import { z, ZodError, type core } from 'zod';
 
 import { Prisma } from '../generated/prisma/client.js';
 
@@ -47,6 +47,38 @@ export interface ErrorBody {
   error: { code: ErrorCode; message: string; requestId: string; details?: ErrorDetail[] };
 }
 
+/** OpenAPI description of ErrorBody (documentation only; responses are built by toErrorBody). */
+export const errorBodySchema = z
+  .object({
+    error: z.object({
+      code: z.enum(Object.keys(errorCatalog) as [ErrorCode, ...ErrorCode[]]),
+      message: z.string().meta({ example: 'Os dados enviados são inválidos.' }),
+      requestId: z.uuid(),
+      details: z
+        .array(
+          z.object({
+            field: z.string().meta({ example: 'email' }),
+            code: z.string().meta({ example: 'invalid_format' }),
+          }),
+        )
+        .optional(),
+    }),
+  })
+  .meta({ id: 'ErrorResponse' });
+
+/** Custom Zod issues carry their stable detail code in `params.reason`. */
+export function customIssue(reason: string): { params: { reason: string } } {
+  return { params: { reason } };
+}
+
+function detailCodeOf(issue: core.$ZodIssue): string {
+  const reason =
+    issue.code === 'custom'
+      ? (issue.params as { reason?: unknown } | undefined)?.reason
+      : undefined;
+  return typeof reason === 'string' ? reason : issue.code;
+}
+
 export function toErrorBody(error: AppError, requestId: string): ErrorBody {
   return {
     error: {
@@ -72,7 +104,7 @@ export function zodIssuesToDetails(
           field: fieldOf([...issue.path, key]),
           code: 'unrecognized_key',
         }))
-      : [{ field: fieldOf(issue.path), code: issue.code }],
+      : [{ field: fieldOf(issue.path), code: detailCodeOf(issue) }],
   );
 }
 

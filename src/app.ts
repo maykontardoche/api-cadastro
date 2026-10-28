@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { type Express, type Router } from 'express';
+import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
 import type { Logger } from 'pino';
 
@@ -10,6 +10,8 @@ import {
   DEFAULT_GLOBAL_RATE_LIMIT,
   type RateLimitOptions,
 } from './http/middlewares/rate-limit.js';
+import { API_PREFIX, buildOpenApiDocument, createDocsRouter } from './http/openapi.js';
+import { mountRoutes, type RouteDefinition } from './http/route.js';
 import { createHealthRouter, type HealthDeps } from './modules/health/health.routes.js';
 
 const JSON_BODY_LIMIT = '100kb';
@@ -19,12 +21,13 @@ export interface AppDeps extends HealthDeps {
   corsOrigins: string[];
   trustProxy: false | number;
   globalRateLimit?: RateLimitOptions;
-  /** Routes mounted under /api/v1, behind the global rate limit and the JSON parser. */
-  apiRouter?: Router;
+  /** Every /api/v1 route; each one is also documented in /openapi.json and /docs. */
+  apiRoutes?: readonly RouteDefinition[];
 }
 
 /** Builds the Express app without opening a port, so tests can drive it directly. */
 export function createApp(deps: AppDeps): Express {
+  const apiRoutes = deps.apiRoutes ?? [];
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', deps.trustProxy);
@@ -39,8 +42,9 @@ export function createApp(deps: AppDeps): Express {
   // CORS after the limiter, so preflight requests count against the quota too.
   app.use(createRateLimiter(deps.globalRateLimit ?? DEFAULT_GLOBAL_RATE_LIMIT));
   app.use(cors({ origin: deps.corsOrigins }));
+  app.use(createDocsRouter(buildOpenApiDocument(apiRoutes)));
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
-  if (deps.apiRouter) app.use('/api/v1', deps.apiRouter);
+  app.use(API_PREFIX, mountRoutes(Router(), apiRoutes));
 
   app.use(notFound);
   app.use(errorHandler);

@@ -1,3 +1,4 @@
+import { createApiRoutes } from './api-routes.js';
 import { createApp } from './app.js';
 import { EnvValidationError, parseEnv, type Env } from './config/env.js';
 import { createPrismaClient, pingDatabase } from './db/prisma.js';
@@ -30,6 +31,7 @@ const app = createApp({
   corsOrigins: env.CORS_ORIGINS,
   trustProxy: env.TRUST_PROXY,
   checkDatabase: () => pingDatabase(prisma),
+  apiRoutes: createApiRoutes({ prisma }),
 });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback instead of throwing.

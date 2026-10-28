@@ -1,11 +1,10 @@
-import { Router } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import type { ErrorBody } from '../../../src/http/errors.js';
 import { createRateLimiter } from '../../../src/http/middlewares/rate-limit.js';
-import { createValidation } from '../../../src/http/middlewares/validate.js';
+import { defineRoute, type RouteDefinition } from '../../../src/http/route.js';
 import { ALLOWED_ORIGIN, buildTestApp, createLogCapture } from '../../helpers/app.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -14,34 +13,61 @@ function errorOf(response: request.Response): ErrorBody['error'] {
   return (response.body as ErrorBody).error;
 }
 
-const echoValidation = createValidation({
-  body: z.strictObject({ name: z.string().min(1), password: z.string().optional() }),
-  query: z.strictObject({
-    page: z.coerce.number().int().min(1).optional(),
-    search: z.string().optional(),
-  }),
-});
-
-/** Routes that exist only in this test, mounted under /api/v1 like real modules. */
-function testRouter(): Router {
-  const router = Router();
-  router.post('/echo', echoValidation.middleware, (_req, res) => {
-    const { body, query } = echoValidation.read(res);
-    res.status(200).json({ body, query });
-  });
-  router.get('/boom', () => {
-    throw new Error('SELECT password_hash FROM users WHERE id = 42');
-  });
-  router.post('/limited', createRateLimiter({ limit: 2, windowMs: 60_000 }), (_req, res) => {
-    res.status(204).end();
-  });
-  router.get('/items/:id', (req, res) => {
-    res.status(200).json({ id: req.params.id });
-  });
-  return router;
+/** Routes that exist only in this test, declared and mounted under /api/v1 like real modules. */
+function testRoutes(): RouteDefinition[] {
+  const base = { tags: ['Test'], summary: 'test route', errors: {} };
+  return [
+    defineRoute({
+      ...base,
+      method: 'post',
+      path: '/echo',
+      schemas: {
+        body: z.strictObject({ name: z.string().min(1), password: z.string().optional() }),
+        query: z.strictObject({
+          page: z.coerce.number().int().min(1).optional(),
+          search: z.string().optional(),
+        }),
+      },
+      success: { status: 200, description: 'echo' },
+      handler: ({ body, query }, _req, res) => {
+        res.status(200).json({ body, query });
+      },
+    }),
+    defineRoute({
+      ...base,
+      method: 'get',
+      path: '/boom',
+      schemas: {},
+      success: { status: 200, description: 'never' },
+      handler: () => {
+        throw new Error('SELECT password_hash FROM users WHERE id = 42');
+      },
+    }),
+    defineRoute({
+      ...base,
+      method: 'post',
+      path: '/limited',
+      schemas: {},
+      middlewares: [createRateLimiter({ limit: 2, windowMs: 60_000 })],
+      success: { status: 204, description: 'ok' },
+      handler: (_input, _req, res) => {
+        res.status(204).end();
+      },
+    }),
+    defineRoute({
+      ...base,
+      method: 'get',
+      path: '/items/:id',
+      schemas: { params: z.strictObject({ id: z.string() }) },
+      success: { status: 200, description: 'item' },
+      handler: ({ params }, _req, res) => {
+        res.status(200).json({ id: params.id });
+      },
+    }),
+  ];
 }
 
-const app = buildTestApp({ apiRouter: testRouter() });
+const app = buildTestApp({ apiRoutes: testRoutes() });
 
 describe('error envelope', () => {
   it('rejects malformed JSON with 400 and the envelope', async () => {
@@ -151,7 +177,7 @@ describe('request id', () => {
 
 describe('rate limiting', () => {
   it('answers 429 in the envelope once a route limiter is exhausted', async () => {
-    const limitedApp = buildTestApp({ apiRouter: testRouter() });
+    const limitedApp = buildTestApp({ apiRoutes: testRoutes() });
     const statuses = [];
     for (let i = 0; i < 3; i += 1) {
       statuses.push((await request(limitedApp).post('/api/v1/limited')).status);
@@ -165,7 +191,7 @@ describe('rate limiting', () => {
 
   it('applies the global limit to API routes but never to health probes', async () => {
     const tightApp = buildTestApp({
-      apiRouter: testRouter(),
+      apiRoutes: testRoutes(),
       globalRateLimit: { limit: 1, windowMs: 60_000 },
     });
 
@@ -201,7 +227,7 @@ describe('security headers and CORS', () => {
 
   it('counts CORS preflight requests against the rate limit', async () => {
     const tightApp = buildTestApp({
-      apiRouter: testRouter(),
+      apiRoutes: testRoutes(),
       globalRateLimit: { limit: 1, windowMs: 60_000 },
     });
     const preflight = () =>
@@ -222,7 +248,7 @@ describe('security headers and CORS', () => {
 describe('request logging', () => {
   it('logs one structured line per request without credentials, body or query', async () => {
     const capture = createLogCapture();
-    const loggedApp = buildTestApp({ logger: capture.logger, apiRouter: testRouter() });
+    const loggedApp = buildTestApp({ logger: capture.logger, apiRoutes: testRoutes() });
 
     const response = await request(loggedApp)
       .post('/api/v1/echo?search=ana@example.com')
@@ -251,7 +277,7 @@ describe('request logging', () => {
 
   it('logs a 500 once, at error level, with the error but not in the response', async () => {
     const capture = createLogCapture();
-    const loggedApp = buildTestApp({ logger: capture.logger, apiRouter: testRouter() });
+    const loggedApp = buildTestApp({ logger: capture.logger, apiRoutes: testRoutes() });
 
     await request(loggedApp).get('/api/v1/boom');
 
@@ -267,7 +293,7 @@ describe('request logging', () => {
 
   it('logs a 4xx at info level, not as an error', async () => {
     const capture = createLogCapture();
-    const loggedApp = buildTestApp({ logger: capture.logger, apiRouter: testRouter() });
+    const loggedApp = buildTestApp({ logger: capture.logger, apiRoutes: testRoutes() });
 
     await request(loggedApp).post('/api/v1/echo').send({});
 
@@ -277,7 +303,7 @@ describe('request logging', () => {
 
   it('logs a malformed path at info level, so anonymous clients cannot flood error logs', async () => {
     const capture = createLogCapture();
-    const loggedApp = buildTestApp({ logger: capture.logger, apiRouter: testRouter() });
+    const loggedApp = buildTestApp({ logger: capture.logger, apiRoutes: testRoutes() });
 
     await request(loggedApp).get('/api/v1/items/%E0%A4%A');
 
