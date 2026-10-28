@@ -29,7 +29,9 @@ const profileResponseSchema = z.object({ data: publicUserSchema });
 /** A malformed id is a 400; a well-formed id of a missing or deleted user is a 404. */
 const userIdParamsSchema = z.strictObject({ id: z.uuid() });
 
-const changeRoleBodySchema = z.strictObject({ role: roleSchema }).meta({ id: 'ChangeRoleRequest' });
+const changeRoleBodySchema = z
+  .strictObject({ role: roleSchema.meta({ example: 'ADMIN' }) })
+  .meta({ id: 'ChangeRoleRequest' });
 
 export interface UserRoutesDeps {
   userService: UserService;
@@ -101,6 +103,7 @@ export function createUserRoutes({ userService, authenticate }: UserRoutesDeps):
       path: '/users/:id',
       tags: ['Users (admin)'],
       summary: 'Consulta um usuário',
+      description: 'Só ADMIN. Um usuário excluído responde como inexistente (404).',
       schemas: { params: userIdParamsSchema },
       access: authenticate,
       requireRole: 'ADMIN',

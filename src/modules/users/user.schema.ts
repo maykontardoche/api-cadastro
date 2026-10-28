@@ -40,12 +40,12 @@ export const roleSchema = z.enum(['USER', 'ADMIN']);
 
 export const publicUserSchema = z
   .object({
-    id: z.uuid(),
-    name: z.string(),
-    email: z.email(),
-    role: roleSchema,
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
+    id: z.uuid().meta({ example: '0192f3a1-7b2c-7d4e-9f10-1a2b3c4d5e6f' }),
+    name: z.string().meta({ example: 'Ana Souza' }),
+    email: z.email().meta({ example: 'ana@example.com' }),
+    role: roleSchema.meta({ example: 'USER' }),
+    createdAt: z.iso.datetime().meta({ example: '2026-10-28T12:00:00.000Z' }),
+    updatedAt: z.iso.datetime().meta({ example: '2026-10-28T12:00:00.000Z' }),
   })
   .meta({ id: 'PublicUser' });
 

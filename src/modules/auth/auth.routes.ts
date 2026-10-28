@@ -28,16 +28,25 @@ export const loginBodySchema = z
   })
   .meta({ id: 'LoginRequest' });
 
+/** Fictitious, with the real length (43) so the example matches the documented format. */
+const EXAMPLE_REFRESH_TOKEN = 'EXAMPLE-refresh-token-43-chars-base64url-xx';
+
 export const loginResponseSchema = z
   .object({
     data: z.object({
-      accessToken: z.string().meta({ description: 'JWT de acesso; envie como `Bearer`.' }),
+      accessToken: z.string().meta({
+        description: 'JWT de acesso; envie como `Bearer`.',
+        example: 'EXAMPLE-access-token-not-a-real-jwt',
+      }),
       tokenType: z.literal('Bearer'),
       expiresIn: z
         .number()
         .int()
         .meta({ description: 'Validade do access token, em segundos.', example: 900 }),
-      refreshToken: z.string().meta({ description: 'Opaco; usado para renovar a sessão.' }),
+      refreshToken: z.string().meta({
+        description: 'Opaco; usado para renovar a sessão.',
+        example: EXAMPLE_REFRESH_TOKEN,
+      }),
       user: publicUserSchema,
     }),
   })
@@ -48,20 +57,26 @@ const REFRESH_TOKEN_MAX_LENGTH = 256;
 
 export const refreshTokenBodySchema = z
   .strictObject({
-    refreshToken: z
-      .string()
-      .min(1)
-      .max(REFRESH_TOKEN_MAX_LENGTH)
-      .meta({ description: 'O `refreshToken` recebido no login ou na última renovação.' }),
+    refreshToken: z.string().min(1).max(REFRESH_TOKEN_MAX_LENGTH).meta({
+      description: 'O `refreshToken` recebido no login ou na última renovação.',
+      example: EXAMPLE_REFRESH_TOKEN,
+    }),
   })
   .meta({ id: 'RefreshTokenRequest' });
 
 export const changePasswordBodySchema = z
   .strictObject({
-    currentPassword: z.string().min(1).max(LOGIN_PASSWORD_MAX_LENGTH),
+    currentPassword: z
+      .string()
+      .min(1)
+      .max(LOGIN_PASSWORD_MAX_LENGTH)
+      .meta({ example: 'uma frase longa que so eu sei' }),
     newPassword: newPasswordSchema,
   })
   .meta({ id: 'ChangePasswordRequest' });
+
+const CREDENTIAL_RATE_LIMITED_DESCRIPTION =
+  '`RATE_LIMITED`: limite das rotas de credencial (20 a cada 15 min por IP, cota compartilhada entre elas) ou o limite global excedido. Cabeçalhos `RateLimit` e `RateLimit-Policy`.';
 
 export interface AuthRoutesDeps {
   userService: UserService;
@@ -96,7 +111,7 @@ export function createAuthRoutes({
       errors: {
         400: 'Dados inválidos (campo ausente, extra, e-mail inválido, senha curta ou comum).',
         409: '`EMAIL_TAKEN`: o e-mail já pertence a uma conta, inclusive excluída.',
-        429: 'Limite de tentativas nas rotas de credencial excedido.',
+        429: CREDENTIAL_RATE_LIMITED_DESCRIPTION,
       },
       handler: async ({ body }, req, res) => {
         const user = await userService.register(body);
@@ -118,7 +133,7 @@ export function createAuthRoutes({
       errors: {
         400: 'Dados inválidos (e-mail mal formado, senha vazia ou campo extra).',
         401: '`INVALID_CREDENTIALS`: e-mail ou senha incorretos. A resposta não diz qual.',
-        429: 'Limite de tentativas nas rotas de credencial excedido.',
+        429: CREDENTIAL_RATE_LIMITED_DESCRIPTION,
       },
       handler: async ({ body }, req, res) => {
         try {
@@ -148,7 +163,7 @@ export function createAuthRoutes({
       errors: {
         400: 'Body inválido (sem `refreshToken`, vazio ou com campo extra).',
         401: '`UNAUTHORIZED`: token desconhecido, expirado, já usado ou de conta excluída. A resposta não diz qual.',
-        429: 'Limite de tentativas nas rotas de credencial excedido.',
+        429: CREDENTIAL_RATE_LIMITED_DESCRIPTION,
       },
       handler: async ({ body }, req, res) => {
         const result = await authService.refresh(body.refreshToken);
@@ -202,7 +217,7 @@ export function createAuthRoutes({
       errors: {
         400: 'Dados inválidos ou nova senha fora da política (curta, longa ou comum).',
         401: '`INVALID_CREDENTIALS`: senha atual incorreta. `UNAUTHORIZED`: token ausente ou inválido.',
-        429: 'Limite de tentativas nas rotas de credencial excedido.',
+        429: CREDENTIAL_RATE_LIMITED_DESCRIPTION,
       },
       handler: async ({ body }, req, res) => {
         const userId = currentUserOf(res).id;

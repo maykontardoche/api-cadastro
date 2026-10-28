@@ -4,7 +4,13 @@ import type { z } from 'zod';
 
 import type { Role } from '../generated/prisma/client.js';
 import { currentUserOf } from './current-user.js';
-import { AppError, errorBodySchema } from './errors.js';
+import {
+  AppError,
+  errorBodySchema,
+  errorCatalog,
+  type ErrorBody,
+  type ErrorCode,
+} from './errors.js';
 import {
   createValidation,
   type ValidatedOf,
@@ -52,6 +58,54 @@ export const REQUIRED_ROLE_EXTENSION = 'x-required-role';
 const FORBIDDEN_DESCRIPTION = '`FORBIDDEN`: o usuário autenticado não tem o papel exigido.';
 const UNAUTHORIZED_DESCRIPTION =
   '`UNAUTHORIZED`: token ausente, inválido, expirado ou de uma conta que não existe mais.';
+// Responses documented here so no route forgets them: 429 and 500 on every route, 413 on every
+// route with a body. A route's own `errors` entry for the same status wins.
+const PAYLOAD_TOO_LARGE_DESCRIPTION =
+  '`PAYLOAD_TOO_LARGE`: corpo acima de 100 KiB (recusado antes da autenticação).';
+const RATE_LIMITED_DESCRIPTION =
+  '`RATE_LIMITED`: limite global de requisições por IP excedido (cabeçalhos `RateLimit` e `RateLimit-Policy`).';
+const INTERNAL_DESCRIPTION =
+  '`INTERNAL`: falha inesperada; a mensagem é genérica e o `requestId` liga a resposta ao log.';
+
+/** Code an error example falls back to when its description names none. */
+const DEFAULT_ERROR_CODE: Record<number, ErrorCode> = {
+  400: 'VALIDATION_ERROR',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
+  429: 'RATE_LIMITED',
+  500: 'INTERNAL',
+};
+const EXAMPLE_REQUEST_ID = '0192f3a1-0000-7000-8000-00000000e001';
+
+/**
+ * Example body of a documented error, so the Swagger UI does not show the first enum value
+ * (`VALIDATION_ERROR`) on every status: the first catalog code of that status the description
+ * names between backticks, else the status default.
+ */
+export function errorExample(status: number, description: string): ErrorBody {
+  const named = [...description.matchAll(/`([A-Z_]+)`/g)]
+    .map((match) => match[1])
+    .find(
+      (code): code is ErrorCode =>
+        code !== undefined &&
+        code in errorCatalog &&
+        errorCatalog[code as ErrorCode].status === status,
+    );
+  const code = named ?? DEFAULT_ERROR_CODE[status] ?? 'INTERNAL';
+  return {
+    error: {
+      code,
+      message: errorCatalog[code].message,
+      requestId: EXAMPLE_REQUEST_ID,
+      ...(code === 'VALIDATION_ERROR'
+        ? { details: [{ field: 'email', code: 'invalid_format' }] }
+        : {}),
+    },
+  };
+}
 
 /** One declaration feeds both the Express route and its OpenAPI operation, so they cannot drift. */
 export interface RouteDefinition {
@@ -101,12 +155,20 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
       const errors = {
         ...(authenticate ? { 401: UNAUTHORIZED_DESCRIPTION } : {}),
         ...(authorize ? { 403: FORBIDDEN_DESCRIPTION } : {}),
+        ...(spec.schemas.body ? { 413: PAYLOAD_TOO_LARGE_DESCRIPTION } : {}),
+        429: RATE_LIMITED_DESCRIPTION,
+        500: INTERNAL_DESCRIPTION,
         ...spec.errors,
       };
       for (const [status, description] of Object.entries(errors)) {
         responses[Number(status)] = {
           description,
-          content: { 'application/json': { schema: errorBodySchema } },
+          content: {
+            'application/json': {
+              schema: errorBodySchema,
+              example: errorExample(Number(status), description),
+            },
+          },
         };
       }
       registry.registerPath({
