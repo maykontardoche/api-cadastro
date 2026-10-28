@@ -76,6 +76,7 @@ mensagem genérica. O papel e o estado do usuário são relidos do banco a cada 
   `REFRESH_TOKEN_TTL_DAYS` (30 dias por padrão). Só o SHA-256 dele é guardado. Cada login inicia
   uma família nova de sessões. A renovação troca o token a cada uso; reapresentar um token já usado
   revoga a família inteira (ADR-0003).
+- **Sessão do login** ✅: é criada sob o mesmo lock por usuário da renovação, relendo o hash da senha e o estado da conta. Um login cuja senha foi conferida instantes antes de uma troca de senha ou de uma exclusão não recebe sessão (**401**).
 - **Esquema** `Bearer` é aceito em qualquer caixa. No Swagger, o botão **Authorize** recebe o
   `accessToken` do login.
 
@@ -104,6 +105,7 @@ cada 15 min por IP, somado ao limite global.
 | POST | `/api/v1/auth/login` | `{ email, password }` (estrito; `email` normalizado como no cadastro; `password` de 1 a 1024 caracteres, sem a política de senha nova) → **200** `{ data: { accessToken, tokenType: "Bearer", expiresIn: 900, refreshToken, user: PublicUser } }`. **401** `INVALID_CREDENTIALS` idêntico para e-mail desconhecido, conta excluída ou senha errada; os três casos custam uma verificação Argon2id, então o tempo de resposta não revela se o e-mail existe. **400** para body mal formado. **429** `RATE_LIMITED`, com cota compartilhada com o cadastro. Idempotência: não idempotente; cada chamada cria uma sessão nova. ✅ | pública | MVP · RF-07, RF-08 |
 | POST | `/api/v1/auth/refresh` | `{ refreshToken }` (estrito, 1 a 256 caracteres) → **200**, no mesmo formato do login, com um par novo. O token enviado deixa de valer, e o novo fica na mesma família. **401** `UNAUTHORIZED` idêntico para token desconhecido, expirado, já usado ou de conta excluída. Token já usado (inclusive por duas renovações simultâneas) revoga todas as sessões ativas da família e gera o log `refresh_reuse_detected`, sem o token. **400** para body inválido. **429** `RATE_LIMITED`, com a cota de credencial. Idempotência: **não** — repetir com o mesmo token derruba a sessão. ✅ | pública (credencial no body) | MVP · RF-09–RF-11 |
 | POST | `/api/v1/auth/logout` | `{ refreshToken }` → **204** sem corpo, também para token desconhecido ou já revogado; não revela o estado. Encerra só aquela sessão. O access token já emitido vale até expirar (até 15 min). **400** para body inválido. Idempotência: natural. ✅ | pública (credencial no body) | MVP · RF-12 |
+| POST | `/api/v1/auth/change-password` | `{ currentPassword, newPassword }` (estrito; `newPassword` segue a política do cadastro) → **204**. Substitui o hash e encerra **todas** as sessões de renovação do usuário, inclusive a atual, na mesma transação. O access token já emitido vale até expirar (até 15 min). **401** `INVALID_CREDENTIALS` se a senha atual estiver errada (nada muda); entre duas trocas simultâneas com a mesma senha atual, só uma vence e a outra recebe esse 401. **400** para nova senha fora da política ou campo extra. **429** `RATE_LIMITED` (cota de credencial). Esta rota tem dois 401 distintos: o cliente deve olhar o `error.code` antes de tratar como sessão expirada — `UNAUTHORIZED` é token inválido (renovar ou entrar de novo), `INVALID_CREDENTIALS` é a senha atual errada (pedir de novo ao usuário). Idempotência: não. ✅ | Bearer (qualquer papel) | MVP · RF-13, RF-14 |
 
 `PublicUser`: `{ id: uuid, name, email, role: "USER" | "ADMIN", createdAt, updatedAt }`, com
 instantes em ISO 8601 UTC.
@@ -117,6 +119,7 @@ Prefixo `/api/v1/users`.
 | Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
 |--------|----------|-----------|------------------|------------|
 | GET | `/api/v1/users/me` | Sem body → **200** `{ data: PublicUser }` do dono do token. Resolvido pelo token, nunca por parâmetro. **401** `UNAUTHORIZED`. Idempotência: natural (leitura). ✅ | Bearer (qualquer papel) | MVP · RF-16 |
+| PATCH | `/api/v1/users/me` | `{ name?, email? }` (estrito, ao menos um campo; normalizados como no cadastro) → **200** `{ data: PublicUser }`. `role`, `id`, `password`, `passwordHash` e datas dão **400** `unrecognized_key`; body vazio dá **400** `empty_update`. **409** `EMAIL_TAKEN` se o e-mail é de outra conta, inclusive excluída. Mudar o e-mail não encerra sessões nem pede verificação (fora do MVP). Idempotência: natural (mesmo body, mesmo estado). ✅ | Bearer (qualquer papel) | MVP · RF-17, RF-18 |
 
 ---
 

@@ -3,10 +3,10 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** Cadastro, login, renovação de sessão, logout, perfil próprio e
-> a documentação interativa estão prontos. A edição de perfil, a troca de senha e a administração
-> de usuários ainda estão sendo construídas. Este README descreve só o que já existe e funciona
-> hoje.
+> **Status: em desenvolvimento.** Todas as capacidades do usuário comum estão prontas: cadastro,
+> login, renovação de sessão, logout, perfil próprio e troca de senha, além da documentação
+> interativa. A administração de usuários ainda está sendo construída. Este README descreve só o
+> que já existe e funciona hoje.
 
 ## O que já funciona
 
@@ -23,6 +23,11 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - **Logout** (`POST /api/v1/auth/logout`): encerra a sessão do refresh token enviado.
 - **Perfil próprio** (`GET /api/v1/users/me`): exige o access token e relê o usuário no banco a
   cada requisição, então uma conta excluída perde o acesso na hora.
+- **Edição do perfil** (`PATCH /api/v1/users/me`): só nome e e-mail. Enviar `role` ou qualquer
+  outro campo resulta em `400`, então ninguém se promove a administrador por aqui.
+- **Troca de senha** (`POST /api/v1/auth/change-password`): exige a senha atual e encerra todas
+  as sessões de renovação. Um login feito com a senha antiga no mesmo instante da troca não
+  recebe sessão.
 - **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
   OpenAPI 3.1 fica em `/openapi.json` e é gerado do próprio código, então não diverge do
   comportamento.
@@ -42,8 +47,7 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Edição do perfil próprio e troca de senha.
-- Perfis `USER` e `ADMIN`, com autorização sempre no servidor.
+- Perfil `ADMIN`, com autorização sempre no servidor.
 - Administração de usuários com paginação, busca e exclusão lógica.
 - Containers da aplicação e integração contínua no GitHub Actions.
 
@@ -126,8 +130,11 @@ As credenciais do `compose.yaml` servem só para os bancos locais descartáveis.
 - **Renovação estrita.** Um token de renovação vale uma única vez. Um cliente que repete a
   renovação depois de perder a resposta, ou duas abas que renovam ao mesmo tempo, são tratados
   como reutilização: a sessão daquela cadeia é encerrada e é preciso entrar de novo.
-- **Access token até expirar.** Logout e encerramento de sessões não invalidam um access token
+- **Access token até expirar.** Logout, troca de senha e encerramento de sessões não invalidam um access token
   já emitido; ele vale até expirar, no máximo 15 minutos.
+- **Troca de e-mail sem confirmação.** O e-mail é alterado só com o access token, sem pedir a
+  senha atual nem confirmar o endereço novo (não há envio de e-mail no MVP). Quem obtiver um access
+  token válido pode trocar o e-mail da conta.
 - **Rate limit em memória.** O contador vale para uma instância só. Mais de uma instância exige um
   store compartilhado.
 

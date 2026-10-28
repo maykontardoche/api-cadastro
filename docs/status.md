@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 6 de 12 concluídas | Cadastro, login, renovação com detecção de reutilização, logout e `/users/me` prontos; próximo: edição de perfil e troca de senha |
+| API Cadastro MVP | — | 7 de 12 concluídas | Todas as capacidades do USER prontas (cadastro, login, sessão, perfil, troca de senha); próximo: admin (seed e listagem) |
 
 ## Pronto para implementar
 
