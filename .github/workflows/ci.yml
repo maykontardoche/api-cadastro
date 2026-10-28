@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# bash (not the bare default) adds -o pipefail, so a failing command inside a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -69,7 +74,9 @@ jobs:
           } > .env
       - run: docker compose build api migrate
       - name: Image runs as a non-root user
-        run: test "$(docker run --rm --entrypoint id api-cadastro:local -u)" != "0"
+        run: |
+          uid="$(docker run --rm --entrypoint id api-cadastro:local -u)"
+          test "$uid" -ne 0
       - run: docker compose up -d --wait db
       - run: docker compose run --rm migrate
       - run: docker compose up -d --wait api
@@ -77,11 +84,20 @@ jobs:
         run: |
           curl --fail --silent --show-error http://127.0.0.1:3000/health/live
           curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+      - name: Register and log in through the container
+        run: |
+          post() {
+            curl --fail --silent --show-error -o /dev/null \
+              -H 'content-type: application/json' -d "$2" "http://127.0.0.1:3000/api/v1/auth/$1"
+          }
+          post register '{"name":"Usuario CI","email":"ci@example.com","password":"senha longa usada so no ci"}'
+          post login '{"email":"ci@example.com","password":"senha longa usada so no ci"}'
       - name: Stops gracefully on SIGTERM
         run: |
           docker compose stop api
           test "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq api)")" = "0"
-          docker compose logs api | grep -q 'shutting down'
+          docker compose logs --no-color api > api.log
+          grep -q 'shutting down' api.log
       - name: API logs
         if: failure()
         run: docker compose logs api
