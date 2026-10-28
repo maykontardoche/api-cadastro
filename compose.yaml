@@ -1,0 +1,39 @@
+name: api-cadastro
+
+# Local, throwaway databases only. Credentials below are NOT for any shared or production use.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_local_only
+      POSTGRES_DB: api_cadastro
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U app -d api_cadastro']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Integration tests only: data lives in tmpfs and disappears with the container.
+  db-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_local_only
+      POSTGRES_DB: api_cadastro_test
+    ports:
+      - '127.0.0.1:5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U app -d api_cadastro_test']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:
