@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { AppError } from '../../http/errors.js';
 import type { UserRepository } from '../users/user.repository.js';
 import { toPublicUser, type PublicUser } from '../users/user.schema.js';
-import type { SessionService } from './session.service.js';
+import type { RotationResult, SessionService } from './session.service.js';
 import type { TokenService } from './token.service.js';
 
 export interface LoginInput {
@@ -19,9 +19,17 @@ export interface LoginResult {
   user: PublicUser;
 }
 
+export type RefreshResult =
+  | { outcome: 'rotated'; session: LoginResult }
+  | Extract<RotationResult, { outcome: 'reused' }>
+  | { outcome: 'invalid' };
+
 export interface AuthService {
   /** Any failure — unknown email, deleted account, wrong password — is the same 401. */
   login: (input: LoginInput) => Promise<LoginResult>;
+  /** The caller turns every outcome but `rotated` into the same 401 (and logs `reused`). */
+  refresh: (refreshToken: string) => Promise<RefreshResult>;
+  logout: (refreshToken: string) => Promise<void>;
 }
 
 export interface PasswordHasher {
@@ -69,13 +77,33 @@ export function createAuthService({
         tokens.signAccess(user.id),
         sessions.create(user.id),
       ]);
+      return toLoginResult(accessToken, session.refreshToken, user);
+    },
+
+    async refresh(refreshToken) {
+      const result = await sessions.rotate(refreshToken);
+      if (result.outcome !== 'rotated') return result;
+      const accessToken = await tokens.signAccess(result.user.id);
       return {
-        accessToken,
-        tokenType: 'Bearer',
-        expiresIn: tokens.accessTtlSeconds,
-        refreshToken: session.refreshToken,
-        user: toPublicUser(user),
+        outcome: 'rotated',
+        session: toLoginResult(accessToken, result.refreshToken, result.user),
       };
     },
+
+    logout: (refreshToken) => sessions.revoke(refreshToken),
   };
+
+  function toLoginResult(
+    accessToken: string,
+    refreshToken: string,
+    user: Parameters<typeof toPublicUser>[0],
+  ): LoginResult {
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      expiresIn: tokens.accessTtlSeconds,
+      refreshToken,
+      user: toPublicUser(user),
+    };
+  }
 }

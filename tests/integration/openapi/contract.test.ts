@@ -113,7 +113,12 @@ describe('OpenAPI document', () => {
       .sort();
 
     // Adding a public route is a deliberate decision: it must be added here too.
-    expect(publicOperations).toEqual(['post /api/v1/auth/login', 'post /api/v1/auth/register']);
+    expect(publicOperations).toEqual([
+      'post /api/v1/auth/login',
+      'post /api/v1/auth/logout',
+      'post /api/v1/auth/refresh',
+      'post /api/v1/auth/register',
+    ]);
   });
 
   it('answers 401 without a token on every secured route, and documents it', async () => {

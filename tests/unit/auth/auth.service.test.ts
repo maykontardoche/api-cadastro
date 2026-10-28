@@ -47,7 +47,11 @@ function setup(
     findActiveById: () => Promise.reject(new Error('not used')),
   };
   const sessions: SessionService = {
-    create: () => Promise.resolve({ refreshToken: 'refresh-token', expiresAt: now }),
+    create: () =>
+      Promise.resolve({ id: 'session-id', refreshToken: 'refresh-token', expiresAt: now }),
+    rotate: () => Promise.reject(new Error('not used')),
+    revoke: () => Promise.reject(new Error('not used')),
+    revokeAllForUser: () => Promise.reject(new Error('not used')),
   };
   const tokens: TokenService = {
     accessTtlSeconds: 900,

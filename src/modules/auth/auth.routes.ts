@@ -42,6 +42,19 @@ export const loginResponseSchema = z
   })
   .meta({ id: 'LoginResponse' });
 
+/** Refresh tokens are 43 base64url characters; the upper bound only rejects absurd input. */
+const REFRESH_TOKEN_MAX_LENGTH = 256;
+
+export const refreshTokenBodySchema = z
+  .strictObject({
+    refreshToken: z
+      .string()
+      .min(1)
+      .max(REFRESH_TOKEN_MAX_LENGTH)
+      .meta({ description: 'O `refreshToken` recebido no login ou na última renovação.' }),
+  })
+  .meta({ id: 'RefreshTokenRequest' });
+
 export interface AuthRoutesDeps {
   userService: UserService;
   authService: AuthService;
@@ -109,6 +122,60 @@ export function createAuthRoutes({
           }
           throw error;
         }
+      },
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/auth/refresh',
+      tags: ['Auth'],
+      summary: 'Renova a sessão',
+      description:
+        'Troca o refresh token por um par novo; o token enviado deixa de valer. Reapresentar um token já usado encerra todas as sessões daquela cadeia (sinal de roubo). Credencial no body: não usa o access token.',
+      schemas: { body: refreshTokenBodySchema },
+      access: 'public',
+      middlewares: [authLimiter],
+      success: { status: 200, description: 'Sessão renovada.', schema: loginResponseSchema },
+      errors: {
+        400: 'Body inválido (sem `refreshToken`, vazio ou com campo extra).',
+        401: '`UNAUTHORIZED`: token desconhecido, expirado, já usado ou de conta excluída. A resposta não diz qual.',
+        429: 'Limite de tentativas nas rotas de credencial excedido.',
+      },
+      handler: async ({ body }, req, res) => {
+        const result = await authService.refresh(body.refreshToken);
+        if (result.outcome === 'rotated') {
+          res.status(200).json({ data: result.session });
+          return;
+        }
+        if (result.outcome === 'reused') {
+          // Never the token itself: the family and the account are enough to investigate.
+          req.log.warn(
+            {
+              event: 'refresh_reuse_detected',
+              userId: result.userId,
+              familyId: result.familyId,
+              revokedSessions: result.revokedSessions,
+              afterRotation: result.afterRotation,
+            },
+            'refresh token reuse detected',
+          );
+        }
+        throw new AppError('UNAUTHORIZED');
+      },
+    }),
+    defineRoute({
+      method: 'post',
+      path: '/auth/logout',
+      tags: ['Auth'],
+      summary: 'Encerra a sessão',
+      description:
+        'Revoga a sessão do refresh token enviado. Responde 204 também quando o token é desconhecido ou já foi revogado, sem revelar o estado. O access token já emitido continua válido até expirar (até 15 min).',
+      schemas: { body: refreshTokenBodySchema },
+      access: 'public',
+      success: { status: 204, description: 'Sessão encerrada (ou já não existia).' },
+      errors: { 400: 'Body inválido (sem `refreshToken`, vazio ou com campo extra).' },
+      handler: async ({ body }, _req, res) => {
+        await authService.logout(body.refreshToken);
+        res.status(204).end();
       },
     }),
   ];
