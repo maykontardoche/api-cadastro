@@ -1,15 +1,14 @@
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { createApiRoutes } from '../../../src/api-routes.js';
+import { buildTestApiRoutes } from '../../helpers/api.js';
 import type { ErrorBody } from '../../../src/http/errors.js';
 import type { PublicUser } from '../../../src/modules/users/user.schema.js';
 import { buildTestApp, createLogCapture } from '../../helpers/app.js';
 import { createTestPrisma, resetDb } from '../../helpers/db.js';
 
 const prisma = createTestPrisma();
-const roomyLimit = { limit: 1_000, windowMs: 60_000 };
-const app = buildTestApp({ apiRoutes: createApiRoutes({ prisma, authRateLimit: roomyLimit }) });
+const app = buildTestApp({ apiRoutes: buildTestApiRoutes(prisma) });
 
 const valid = {
   name: 'Ana Souza',
@@ -123,7 +122,7 @@ describe('POST /api/v1/auth/register', () => {
     const capture = createLogCapture();
     const loggedApp = buildTestApp({
       logger: capture.logger,
-      apiRoutes: createApiRoutes({ prisma, authRateLimit: roomyLimit }),
+      apiRoutes: buildTestApiRoutes(prisma),
     });
 
     const response = await register(valid, loggedApp);
@@ -136,7 +135,7 @@ describe('POST /api/v1/auth/register', () => {
 
   it('applies the credential rate limit', async () => {
     const limitedApp = buildTestApp({
-      apiRoutes: createApiRoutes({ prisma, authRateLimit: { limit: 2, windowMs: 60_000 } }),
+      apiRoutes: buildTestApiRoutes(prisma, { authRateLimit: { limit: 2, windowMs: 60_000 } }),
     });
 
     const statuses = [];

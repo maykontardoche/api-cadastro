@@ -31,7 +31,15 @@ const app = createApp({
   corsOrigins: env.CORS_ORIGINS,
   trustProxy: env.TRUST_PROXY,
   checkDatabase: () => pingDatabase(prisma),
-  apiRoutes: createApiRoutes({ prisma }),
+  apiRoutes: createApiRoutes({
+    prisma,
+    tokens: {
+      secret: env.JWT_ACCESS_SECRET,
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
+    },
+    refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+  }),
 });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback instead of throwing.

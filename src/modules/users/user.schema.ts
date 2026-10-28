@@ -52,7 +52,7 @@ export const publicUserSchema = z
 export type PublicUser = z.infer<typeof publicUserSchema>;
 
 /** The only shape of a user that leaves the API: no password hash, no deletion marker. */
-export function toPublicUser(user: User): PublicUser {
+export function toPublicUser(user: Omit<User, 'passwordHash'>): PublicUser {
   return {
     id: user.id,
     name: user.name,

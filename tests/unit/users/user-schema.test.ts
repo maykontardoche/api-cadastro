@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import type { User } from '../../../src/generated/prisma/client.js';
 import { zodIssuesToDetails } from '../../../src/http/errors.js';
 import { emailSchema, nameSchema, toPublicUser } from '../../../src/modules/users/user.schema.js';
 
@@ -63,9 +64,9 @@ describe('nameSchema', () => {
 });
 
 describe('toPublicUser', () => {
-  it('exposes only public fields', () => {
+  it('exposes only public fields, even when given a full row with the hash', () => {
     const now = new Date('2026-10-28T12:00:00.000Z');
-    const publicUser = toPublicUser({
+    const fullRow: User = {
       id: '0192f000-0000-7000-8000-000000000001',
       name: 'Ana',
       email: 'ana@example.com',
@@ -74,7 +75,8 @@ describe('toPublicUser', () => {
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    const publicUser = toPublicUser(fullRow);
 
     expect(Object.keys(publicUser).sort()).toEqual(
       ['createdAt', 'email', 'id', 'name', 'role', 'updatedAt'].sort(),

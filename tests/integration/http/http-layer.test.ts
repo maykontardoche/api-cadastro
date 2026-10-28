@@ -15,7 +15,7 @@ function errorOf(response: request.Response): ErrorBody['error'] {
 
 /** Routes that exist only in this test, declared and mounted under /api/v1 like real modules. */
 function testRoutes(): RouteDefinition[] {
-  const base = { tags: ['Test'], summary: 'test route', errors: {} };
+  const base = { tags: ['Test'], summary: 'test route', errors: {}, access: 'public' as const };
   return [
     defineRoute({
       ...base,

@@ -3,7 +3,7 @@ import { Router } from 'express';
 import swaggerUi from 'swagger-ui-express';
 
 import { registerHealthDocs } from '../modules/health/health.openapi.js';
-import type { RouteDefinition } from './route.js';
+import { BEARER_AUTH, type RouteDefinition } from './route.js';
 
 export const API_PREFIX = '/api/v1';
 const API_VERSION = '0.1.0';
@@ -12,6 +12,13 @@ export type OpenApiDocument = ReturnType<OpenApiGeneratorV31['generateDocument']
 
 export function buildOpenApiDocument(apiRoutes: readonly RouteDefinition[]): OpenApiDocument {
   const registry = new OpenAPIRegistry();
+  registry.registerComponent('securitySchemes', BEARER_AUTH, {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+    description:
+      'Access token devolvido pelo login (`accessToken`), válido por 15 minutos. No Swagger, use o botão Authorize.',
+  });
   registerHealthDocs(registry);
   for (const route of apiRoutes) route.document(registry, API_PREFIX);
 

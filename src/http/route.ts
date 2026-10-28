@@ -27,10 +27,21 @@ export interface RouteSpec<S extends ValidationSchemas> {
   /** Success response (2xx) and the error codes this route can answer with. */
   success: { status: number } & RouteResponse;
   errors: Partial<Record<400 | 401 | 403 | 404 | 409 | 413 | 429 | 500, string>>;
-  /** Runs before validation (e.g. rate limiter, authentication). */
+  /** Runs before authentication and validation (e.g. rate limiter). */
   middlewares?: RequestHandler[];
+  /**
+   * Required on purpose, so no route becomes public by omission. `'public'` is an explicit
+   * choice; a middleware makes the route require a bearer access token — it runs after
+   * `middlewares`, marks the operation as secured in the OpenAPI document and documents the 401.
+   */
+  access: 'public' | RequestHandler;
   handler: (input: ValidatedOf<S>, req: Request, res: Response) => Promise<void> | void;
 }
+
+/** Name of the security scheme registered in the OpenAPI document. */
+export const BEARER_AUTH = 'bearerAuth';
+const UNAUTHORIZED_DESCRIPTION =
+  '`UNAUTHORIZED`: token ausente, inválido, expirado ou de uma conta que não existe mais.';
 
 /** One declaration feeds both the Express route and its OpenAPI operation, so they cannot drift. */
 export interface RouteDefinition {
@@ -47,6 +58,7 @@ export function toOpenApiPath(expressPath: string): string {
 
 export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): RouteDefinition {
   const validation = createValidation(spec.schemas);
+  const authenticate = spec.access === 'public' ? undefined : spec.access;
 
   return {
     method: spec.method,
@@ -55,6 +67,7 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
       router[spec.method](
         spec.path,
         ...(spec.middlewares ?? []),
+        ...(authenticate ? [authenticate] : []),
         validation.middleware,
         async (req, res) => {
           await spec.handler(validation.read(res), req, res);
@@ -70,7 +83,8 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
             : {}),
         },
       };
-      for (const [status, description] of Object.entries(spec.errors)) {
+      const errors = authenticate ? { 401: UNAUTHORIZED_DESCRIPTION, ...spec.errors } : spec.errors;
+      for (const [status, description] of Object.entries(errors)) {
         responses[Number(status)] = {
           description,
           content: { 'application/json': { schema: errorBodySchema } },
@@ -82,6 +96,7 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
         tags: spec.tags,
         summary: spec.summary,
         ...(spec.description ? { description: spec.description } : {}),
+        ...(authenticate ? { security: [{ [BEARER_AUTH]: [] }] } : {}),
         request: {
           ...(spec.schemas.body
             ? { body: { content: { 'application/json': { schema: spec.schemas.body } } } }

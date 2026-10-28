@@ -2,7 +2,7 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { createApiRoutes } from '../../../src/api-routes.js';
+import { buildTestApiRoutes } from '../../helpers/api.js';
 import type { ErrorBody } from '../../../src/http/errors.js';
 import { API_PREFIX, type OpenApiDocument } from '../../../src/http/openapi.js';
 import { toOpenApiPath } from '../../../src/http/route.js';
@@ -10,7 +10,7 @@ import { buildTestApp } from '../../helpers/app.js';
 import { createTestPrisma } from '../../helpers/db.js';
 
 const prisma = createTestPrisma();
-const apiRoutes = createApiRoutes({ prisma });
+const apiRoutes = buildTestApiRoutes(prisma);
 const app = buildTestApp({ apiRoutes });
 
 /** Routes that serve the documentation itself and are not part of it. */
@@ -98,6 +98,43 @@ describe('OpenAPI document', () => {
       expect((response.body as Partial<ErrorBody>).error?.code, `${route.method} ${path}`).not.toBe(
         'NOT_FOUND',
       );
+    }
+  });
+
+  it('keeps public only the routes that are meant to be public', async () => {
+    const document = await fetchDocument();
+    const publicOperations = Object.entries(document.paths ?? {})
+      .filter(([path]) => path.startsWith(API_PREFIX))
+      .flatMap(([path, item]) =>
+        Object.entries(item)
+          .filter(([, operation]) => !(operation as { security?: unknown }).security)
+          .map(([method]) => `${method} ${path}`),
+      )
+      .sort();
+
+    // Adding a public route is a deliberate decision: it must be added here too.
+    expect(publicOperations).toEqual(['post /api/v1/auth/login', 'post /api/v1/auth/register']);
+  });
+
+  it('answers 401 without a token on every secured route, and documents it', async () => {
+    const document = await fetchDocument();
+    const secured = Object.entries(document.paths ?? {}).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(([, operation]) => (operation as { security?: unknown }).security)
+        .map(([method, operation]) => ({
+          method,
+          path,
+          operation: operation as { responses: object },
+        })),
+    );
+
+    expect(secured.length).toBeGreaterThan(0);
+    for (const { method, path, operation } of secured) {
+      expect(operation.responses, `${method} ${path}`).toHaveProperty('401');
+      const concretePath = path.replace(/\{\w+\}/g, '00000000-0000-7000-8000-000000000000');
+      const response = await request(app)[method as 'get'](concretePath).send({});
+      expect(response.status, `${method} ${path}`).toBe(401);
+      expect((response.body as ErrorBody).error.code).toBe('UNAUTHORIZED');
     }
   });
 

@@ -6,22 +6,49 @@ import {
 } from './http/middlewares/rate-limit.js';
 import type { RouteDefinition } from './http/route.js';
 import { createAuthRoutes } from './modules/auth/auth.routes.js';
-import { hashPassword } from './modules/auth/password.js';
+import { createAuthService } from './modules/auth/auth.service.js';
+import { createAuthenticate } from './modules/auth/authenticate.js';
+import { hashPassword, verifyPassword } from './modules/auth/password.js';
+import { createSessionRepository } from './modules/auth/session.repository.js';
+import { createSessionService } from './modules/auth/session.service.js';
+import { createTokenService, type TokenConfig } from './modules/auth/token.service.js';
 import { createUserRepository } from './modules/users/user.repository.js';
+import { createUserRoutes } from './modules/users/user.routes.js';
 import { createUserService } from './modules/users/user.service.js';
 
 export interface ApiRoutesDeps {
   prisma: PrismaClient;
+  tokens: TokenConfig;
+  refreshTtlDays: number;
   authRateLimit?: RateLimitOptions;
 }
 
 /** Wires services into every /api/v1 route; the same list feeds Express and the OpenAPI document. */
 export function createApiRoutes({
   prisma,
+  tokens: tokenConfig,
+  refreshTtlDays,
   authRateLimit = DEFAULT_AUTH_RATE_LIMIT,
 }: ApiRoutesDeps): RouteDefinition[] {
-  const userService = createUserService({ users: createUserRepository(prisma), hashPassword });
+  const users = createUserRepository(prisma);
+  const tokens = createTokenService(tokenConfig);
+  const sessions = createSessionService({
+    sessions: createSessionRepository(prisma),
+    tokens,
+    refreshTtlDays,
+  });
+  const userService = createUserService({ users, hashPassword });
+  const authService = createAuthService({
+    users,
+    sessions,
+    tokens,
+    passwords: { hash: hashPassword, verify: verifyPassword },
+  });
+  const authenticate = createAuthenticate({ tokens, users });
   const authLimiter = createRateLimiter(authRateLimit);
 
-  return [...createAuthRoutes({ userService, authLimiter })];
+  return [
+    ...createAuthRoutes({ userService, authService, authLimiter }),
+    ...createUserRoutes({ authenticate }),
+  ];
 }
