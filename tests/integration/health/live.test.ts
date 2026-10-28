@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../../src/app.js';
 
 describe('GET /health/live', () => {
-  const app = createApp();
+  // A check that always fails proves liveness does not depend on the database.
+  const app = createApp({
+    checkDatabase: () => Promise.reject(new Error('database is down')),
+  });
 
-  it('responds 200 without any dependency', async () => {
+  it('responds 200 even when the database is down', async () => {
     const response = await request(app).get('/health/live');
 
     expect(response.status).toBe(200);

@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import { EnvValidationError, parseEnv, type Env } from './config/env.js';
+import { createPrismaClient, pingDatabase } from './db/prisma.js';
 
 function loadEnv(): Env {
   try {
@@ -14,8 +15,11 @@ function loadEnv(): Env {
 }
 
 const env = loadEnv();
+const prisma = createPrismaClient(env.DATABASE_URL);
+const app = createApp({ checkDatabase: () => pingDatabase(prisma) });
+
 // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback instead of throwing.
-const server = createApp().listen(env.PORT, (error?: Error) => {
+const server = app.listen(env.PORT, (error?: Error) => {
   if (error) {
     console.error(`Could not listen on port ${String(env.PORT)}: ${error.message}`);
     process.exit(1);
@@ -25,7 +29,9 @@ const server = createApp().listen(env.PORT, (error?: Error) => {
 
 function shutdown(signal: NodeJS.Signals): void {
   console.info(`${signal} received, closing server`);
-  server.close(() => process.exit(0));
+  server.close(() => {
+    void prisma.$disconnect().finally(() => process.exit(0));
+  });
 }
 
 process.once('SIGTERM', shutdown);

@@ -5,6 +5,9 @@ node_modules/
 dist/
 coverage/
 
+# Generated Prisma client (npm run db:generate)
+src/generated/
+
 # Logs
 logs
 *.log
