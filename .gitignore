@@ -13,6 +13,10 @@ logs
 *.log
 npm-debug.log*
 
+# Database dumps (personal data and hashes); migrations are the only SQL that is versioned
+*.sql
+!prisma/migrations/**/*.sql
+
 # Environment
 .env
 .env.local

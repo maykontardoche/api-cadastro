@@ -20,11 +20,20 @@ e os testes limpam as tabelas entre si. Para zerá-lo, basta `docker compose res
 1. Confirme que está na pasta do projeto: `docker compose config --services` lista `db`,
    `db-test` e `api`.
 2. Confira qual volume será apagado: `docker volume ls --filter name=api-cadastro_db-data`.
-3. Se precisar de algum dado, exporte antes:
+3. Pare a API, se estiver rodando fora do container (`npm run dev`): o `down` do passo 1 só para
+   os containers.
+4. Se precisar de algum dado, exporte antes. O backup tem nomes, e-mails e hashes de senha e de
+   token: **grave fora da pasta do projeto**, para ele nunca entrar num commit (o `.gitignore`
+   também ignora `*.sql` fora de `prisma/migrations/`). O dump é feito dentro do container e
+   copiado com `docker compose cp`, o que funciona igual no bash e no PowerShell:
 
    ```bash
-   docker compose exec -T db pg_dump -U app -d api_cadastro > backup-local.sql
+   docker compose up -d --wait db
+   docker compose exec -T db pg_dump -U app -d api_cadastro -f /tmp/backup.sql
+   docker compose cp db:/tmp/backup.sql ../api-cadastro-backup.sql
    ```
+
+   Apague o arquivo quando não precisar mais dele.
 
 ## Passos
 
@@ -70,9 +79,12 @@ deve trazer `{"status":"ok","checks":{"database":"ok"}}`.
 ## Restaurar um backup
 
 O `pg_dump` padrão já traz o schema e o histórico de migrations (`_prisma_migrations`). Por
-isso, restaure num banco **vazio**, logo depois do passo 2, e pule os passos 3 e 4:
+isso, restaure num banco **vazio**, logo depois do passo 2, e pule os passos 3 e 4. O
+`ON_ERROR_STOP` faz o restore parar no primeiro erro, em vez de terminar pela metade como se
+tivesse dado certo:
 
 ```bash
-docker compose exec -T db psql -U app -d api_cadastro < backup-local.sql
+docker compose cp ../api-cadastro-backup.sql db:/tmp/backup.sql
+docker compose exec -T db psql -U app -d api_cadastro -v ON_ERROR_STOP=1 -q -f /tmp/backup.sql
 npm run db:deploy                    # aplica só migrations mais novas que o backup, se houver
 ```
