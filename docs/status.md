@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 9 de 12 concluídas | Toda a API do MVP pronta (USER e ADMIN, com a garantia do último admin); próximo: consolidação da documentação da API |
+| API Cadastro MVP | — | 10 de 12 concluídas | API do MVP pronta e documentada (OpenAPI 3.1 validado, Swagger testado rota a rota); próximo: containers e CI |
 
 ## Pronto para implementar
 
@@ -37,3 +37,4 @@
 ## Notas
 
 - Decisões aceitas: ADR-0001 (monólito modular), ADR-0002 (TypeScript + Prisma 7.10.1), ADR-0003 (modelo de sessão) e ADR-0004 (OpenAPI gerado das declarações de rota).
+- Pendência para o review de segurança antes do release: as respostas de token (`login`, `refresh`) e as leituras autenticadas ainda não mandam `Cache-Control: no-store` (RFC 6749 §5.1). O risco é baixo (sem frontend; caches compartilhados não guardam respostas a requisições com `Authorization`), mas a política precisa ser explícita.

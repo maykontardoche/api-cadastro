@@ -46,7 +46,7 @@
   | 403 | `FORBIDDEN` | Sem permissão |
   | 404 | `NOT_FOUND` | Recurso ou rota inexistente |
   | 409 | `EMAIL_TAKEN`, `LAST_ADMIN`, `CONFLICT` | Conflito com o estado |
-  | 413 | `PAYLOAD_TOO_LARGE` | Corpo acima de 100 kB |
+  | 413 | `PAYLOAD_TOO_LARGE` | Corpo acima de 100 KiB (102.400 bytes), recusado antes da autenticação |
   | 429 | `RATE_LIMITED` | Limite de taxa excedido |
   | 500 | `INTERNAL` | Falha inesperada (mensagem genérica) |
   | 503 | — | Dependência indisponível (só no `ready`, fora do envelope) |
@@ -56,7 +56,7 @@
   `requestId` do erro e no log da requisição.
 - **Limite de taxa** ✅: o limite global é de 300 requisições a cada 15 min por IP, para todas as
   rotas exceto `/health/*` (inclui `/api/v1`, rotas inexistentes e preflight de CORS). Rotas de
-  credencial terão um limite próprio de 20 a cada 15 min por IP. Cabeçalhos `RateLimit` e
+  credencial têm um limite próprio de 20 a cada 15 min por IP (ver *Auth*). Cabeçalhos `RateLimit` e
   `RateLimit-Policy` (IETF draft-8). O contador fica em memória: vale para uma instância só.
 - **Cabeçalhos de segurança** ✅: helmet com os padrões dele (CSP, `X-Content-Type-Options:
   nosniff`, HSTS etc.) e sem `X-Powered-By`.
@@ -64,6 +64,10 @@
   chamados por navegador). Outra origem não recebe `Access-Control-Allow-Origin`. Sem
   credenciais (cookies) no CORS.
 - **Idempotência:** `logout` e `DELETE` são idempotentes por natureza. Não há `Idempotency-Key`.
+- **Cache condicional:** toda resposta com corpo traz `ETag` (padrão do Express), inclusive as de
+  escrita e as de erro. Só um `GET` de sucesso com `If-None-Match` igual recebe **304** sem corpo.
+  Ainda não há `Cache-Control: no-store` nas respostas de token e nas leituras autenticadas: é
+  pendência registrada para o review de segurança.
 
 ## Autenticação
 
@@ -140,6 +144,23 @@ token novo. No OpenAPI, essas operações têm `x-required-role: ADMIN`, e o tes
 |--------|----------|-----------|------------------|------------|
 | GET | `/openapi.json` | Documento OpenAPI 3.1 de todas as rotas. ✅ | pública | MVP · RF-31 |
 | GET | `/docs` | Swagger UI: lista os endpoints e permite testá-los ("Try it out"). ✅ | pública | MVP · RF-32 |
+
+O que o documento garante, verificado por teste (`tests/unit/http/openapi-document.test.ts` e
+`tests/integration/openapi/contract.test.ts`):
+
+- passa no schema oficial do OpenAPI 3.1;
+- rotas do Express e operações do documento são o mesmo conjunto, e o acesso de cada uma (pública,
+  qualquer papel, `ADMIN`) é travado no teste;
+- toda operação de `/api/v1` tem `summary` e `description` e documenta **429** e **500**. As que
+  têm body documentam **400** e **413**, as que têm `{id}` documentam **400**, as autenticadas
+  documentam **401** e as de `ADMIN` documentam **403**. Toda resposta de erro usa o envelope
+  `ErrorResponse`, com um exemplo cujo `code` é do próprio status (o 409 da troca de papel mostra
+  `LAST_ADMIN`, não `VALIDATION_ERROR`);
+- os exemplos são fictícios (e-mails `@example.com`, tokens com o prefixo `EXAMPLE`). O teste
+  recusa qualquer texto no formato de JWT ou de hash Argon2.
+
+No Swagger, um `{id}` que não é UUID é barrado pela validação do próprio Swagger UI, antes da
+requisição. O **400** `invalid_format` aparece ao chamar a API direto (curl, cliente HTTP).
 
 ---
 
