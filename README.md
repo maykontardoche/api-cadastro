@@ -3,9 +3,10 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** Cadastro, login, perfil próprio e a documentação interativa
-> estão prontos. A renovação de sessão, o logout, a troca de senha e a administração de usuários
-> ainda estão sendo construídos. Este README descreve só o que já existe e funciona hoje.
+> **Status: em desenvolvimento.** Cadastro, login, renovação de sessão, logout, perfil próprio e
+> a documentação interativa estão prontos. A edição de perfil, a troca de senha e a administração
+> de usuários ainda estão sendo construídas. Este README descreve só o que já existe e funciona
+> hoje.
 
 ## O que já funciona
 
@@ -15,6 +16,11 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - **Login** (`POST /api/v1/auth/login`): devolve um access token JWT de 15 minutos e um refresh
   token opaco, do qual só o hash é guardado. E-mail desconhecido, conta excluída e senha errada
   recebem a mesma resposta `401`.
+- **Renovação de sessão** (`POST /api/v1/auth/refresh`): troca o refresh token por um par novo, e
+  o antigo deixa de valer. Reapresentar um token já usado, sinal de roubo, encerra todas as
+  sessões daquela cadeia, inclusive uma que esteja sendo criada naquele instante. Decisão em
+  [ADR-0003](docs/adr/0003-modelo-de-sessao.md).
+- **Logout** (`POST /api/v1/auth/logout`): encerra a sessão do refresh token enviado.
 - **Perfil próprio** (`GET /api/v1/users/me`): exige o access token e relê o usuário no banco a
   cada requisição, então uma conta excluída perde o acesso na hora.
 - **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
@@ -36,7 +42,6 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Renovação do refresh token com detecção de reutilização, e logout.
 - Edição do perfil próprio e troca de senha.
 - Perfis `USER` e `ADMIN`, com autorização sempre no servidor.
 - Administração de usuários com paginação, busca e exclusão lógica.
@@ -115,6 +120,16 @@ curl http://localhost:3000/api/v1/users/me -H "Authorization: Bearer <accessToke
 ```
 
 As credenciais do `compose.yaml` servem só para os bancos locais descartáveis.
+
+## Limitações conhecidas
+
+- **Renovação estrita.** Um token de renovação vale uma única vez. Um cliente que repete a
+  renovação depois de perder a resposta, ou duas abas que renovam ao mesmo tempo, são tratados
+  como reutilização: a sessão daquela cadeia é encerrada e é preciso entrar de novo.
+- **Access token até expirar.** Logout e encerramento de sessões não invalidam um access token
+  já emitido; ele vale até expirar, no máximo 15 minutos.
+- **Rate limit em memória.** O contador vale para uma instância só. Mais de uma instância exige um
+  store compartilhado.
 
 ## Testes
 

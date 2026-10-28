@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 5 de 12 concluídas | Cadastro, login, `/users/me` e Swagger com Authorize prontos; próximo: renovação de sessão e logout |
+| API Cadastro MVP | — | 6 de 12 concluídas | Cadastro, login, renovação com detecção de reutilização, logout e `/users/me` prontos; próximo: edição de perfil e troca de senha |
 
 ## Pronto para implementar
 
@@ -36,4 +36,4 @@
 
 ## Notas
 
-- Decisões aceitas: ADR-0001 (monólito modular), ADR-0002 (TypeScript + Prisma 7.10.1) e ADR-0004 (OpenAPI gerado das declarações de rota).
+- Decisões aceitas: ADR-0001 (monólito modular), ADR-0002 (TypeScript + Prisma 7.10.1), ADR-0003 (modelo de sessão) e ADR-0004 (OpenAPI gerado das declarações de rota).

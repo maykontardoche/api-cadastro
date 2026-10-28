@@ -74,7 +74,8 @@ mensagem genérica. O papel e o estado do usuário são relidos do banco a cada 
   usuário excluído depois da emissão resultam em **401** `UNAUTHORIZED`.
 - **Refresh token** ✅: valor opaco de 256 bits (base64url, 43 caracteres), válido por
   `REFRESH_TOKEN_TTL_DAYS` (30 dias por padrão). Só o SHA-256 dele é guardado. Cada login inicia
-  uma família nova de sessões. Renovação e logout: 🚧 tarefa 6.
+  uma família nova de sessões. A renovação troca o token a cada uso; reapresentar um token já usado
+  revoga a família inteira (ADR-0003).
 - **Esquema** `Bearer` é aceito em qualquer caixa. No Swagger, o botão **Authorize** recebe o
   `accessToken` do login.
 
@@ -101,6 +102,8 @@ cada 15 min por IP, somado ao limite global.
 |--------|----------|-----------|------------------|------------|
 | POST | `/api/v1/auth/register` | `{ name, email, password }` (body estrito: qualquer outro campo, inclusive `role`, dá **400** `unrecognized_key`) → **201** `{ data: PublicUser }`. `email` é normalizado (trim + minúsculas); `name` com trim, de 2 a 100 caracteres; `password` de 15 a 128 caracteres (code points, após NFKC), sem composição, e recusada com `common_password` se estiver na lista de senhas comuns. Sempre cria `role: "USER"`. **409** `EMAIL_TAKEN` se o e-mail já existe, inclusive em conta excluída. **429** `RATE_LIMITED`. A resposta nunca traz senha nem hash. Idempotência: não idempotente; repetir dá 409. ✅ | pública | MVP · RF-01–RF-06 |
 | POST | `/api/v1/auth/login` | `{ email, password }` (estrito; `email` normalizado como no cadastro; `password` de 1 a 1024 caracteres, sem a política de senha nova) → **200** `{ data: { accessToken, tokenType: "Bearer", expiresIn: 900, refreshToken, user: PublicUser } }`. **401** `INVALID_CREDENTIALS` idêntico para e-mail desconhecido, conta excluída ou senha errada; os três casos custam uma verificação Argon2id, então o tempo de resposta não revela se o e-mail existe. **400** para body mal formado. **429** `RATE_LIMITED`, com cota compartilhada com o cadastro. Idempotência: não idempotente; cada chamada cria uma sessão nova. ✅ | pública | MVP · RF-07, RF-08 |
+| POST | `/api/v1/auth/refresh` | `{ refreshToken }` (estrito, 1 a 256 caracteres) → **200**, no mesmo formato do login, com um par novo. O token enviado deixa de valer, e o novo fica na mesma família. **401** `UNAUTHORIZED` idêntico para token desconhecido, expirado, já usado ou de conta excluída. Token já usado (inclusive por duas renovações simultâneas) revoga todas as sessões ativas da família e gera o log `refresh_reuse_detected`, sem o token. **400** para body inválido. **429** `RATE_LIMITED`, com a cota de credencial. Idempotência: **não** — repetir com o mesmo token derruba a sessão. ✅ | pública (credencial no body) | MVP · RF-09–RF-11 |
+| POST | `/api/v1/auth/logout` | `{ refreshToken }` → **204** sem corpo, também para token desconhecido ou já revogado; não revela o estado. Encerra só aquela sessão. O access token já emitido vale até expirar (até 15 min). **400** para body inválido. Idempotência: natural. ✅ | pública (credencial no body) | MVP · RF-12 |
 
 `PublicUser`: `{ id: uuid, name, email, role: "USER" | "ADMIN", createdAt, updatedAt }`, com
 instantes em ISO 8601 UTC.
