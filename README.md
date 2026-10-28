@@ -3,15 +3,20 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** A fundação, a camada HTTP, o cadastro de usuários e a
-> documentação interativa estão prontos. Login, sessões e administração de usuários ainda estão
-> sendo construídos. Este README descreve só o que já existe e funciona hoje.
+> **Status: em desenvolvimento.** Cadastro, login, perfil próprio e a documentação interativa
+> estão prontos. A renovação de sessão, o logout, a troca de senha e a administração de usuários
+> ainda estão sendo construídos. Este README descreve só o que já existe e funciona hoje.
 
 ## O que já funciona
 
 - **Cadastro de usuários** (`POST /api/v1/auth/register`): sempre cria o papel `USER`, guarda
   a senha com Argon2id e recusa e-mail repetido com `409`. A senha tem de 15 a 128
   caracteres, sem regra de composição, e é recusada se estiver numa lista de senhas comuns.
+- **Login** (`POST /api/v1/auth/login`): devolve um access token JWT de 15 minutos e um refresh
+  token opaco, do qual só o hash é guardado. E-mail desconhecido, conta excluída e senha errada
+  recebem a mesma resposta `401`.
+- **Perfil próprio** (`GET /api/v1/users/me`): exige o access token e relê o usuário no banco a
+  cada requisição, então uma conta excluída perde o acesso na hora.
 - **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
   OpenAPI 3.1 fica em `/openapi.json` e é gerado do próprio código, então não diverge do
   comportamento.
@@ -31,8 +36,8 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Login, com access token curto e refresh token rotativo com detecção de reutilização.
-- Perfil próprio e troca de senha.
+- Renovação do refresh token com detecção de reutilização, e logout.
+- Edição do perfil próprio e troca de senha.
 - Perfis `USER` e `ADMIN`, com autorização sempre no servidor.
 - Administração de usuários com paginação, busca e exclusão lógica.
 - Containers da aplicação e integração contínua no GitHub Actions.
@@ -80,6 +85,13 @@ npm run dev                  # http://localhost:3000
 Abra **http://localhost:3000/docs**, escolha um endpoint, clique em **Try it out** e depois em
 **Execute**. O corpo de exemplo já vem preenchido.
 
+Para as rotas com cadeado (como `GET /api/v1/users/me`):
+
+1. Cadastre-se em `POST /api/v1/auth/register` e entre em `POST /api/v1/auth/login`.
+2. Copie o `accessToken` da resposta do login.
+3. Clique em **Authorize** no topo da página, cole o token e confirme.
+4. Execute a rota com cadeado. O token vale por 15 minutos.
+
 ### Testando pelo terminal
 
 No PowerShell, use `curl.exe`, porque `curl` sozinho é outro comando:
@@ -92,6 +104,14 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"name":"Ana Souza","email":"ana@example.com","password":"uma frase longa que so eu sei"}'
 # 201 {"data":{"id":"…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}}
+
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ana@example.com","password":"uma frase longa que so eu sei"}'
+# 200 {"data":{"accessToken":"…","tokenType":"Bearer","expiresIn":900,"refreshToken":"…","user":{…}}}
+
+curl http://localhost:3000/api/v1/users/me -H "Authorization: Bearer <accessToken>"
+# 200 {"data":{"id":"…","name":"Ana Souza","email":"ana@example.com","role":"USER",…}}
 ```
 
 As credenciais do `compose.yaml` servem só para os bancos locais descartáveis.

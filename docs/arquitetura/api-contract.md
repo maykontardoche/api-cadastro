@@ -64,9 +64,19 @@
 
 ## Autenticação
 
-Fechado por padrão: toda rota em `/api/v1` exige `Authorization: Bearer <accessToken>`, exceto as
+Fechado por padrão: toda rota em `/api/v1` declara `access` obrigatoriamente e exige `Authorization: Bearer <accessToken>`, exceto as
 marcadas como públicas. Sem credencial válida, a resposta é **401**; sem permissão, **403** com
 mensagem genérica. O papel e o estado do usuário são relidos do banco a cada requisição.
+
+- **Access token** ✅: JWT HS256 com header `typ: "at+jwt"` (RFC 9068) e claims `sub` (id do
+  usuário), `iss`, `aud`, `iat`, `exp` (15 min) e `jti`. Não carrega papel, e-mail nem outro dado
+  do usuário. Outro `typ`, outro `iss`/`aud`, assinatura inválida, `alg: none`, token expirado ou
+  usuário excluído depois da emissão resultam em **401** `UNAUTHORIZED`.
+- **Refresh token** ✅: valor opaco de 256 bits (base64url, 43 caracteres), válido por
+  `REFRESH_TOKEN_TTL_DAYS` (30 dias por padrão). Só o SHA-256 dele é guardado. Cada login inicia
+  uma família nova de sessões. Renovação e logout: 🚧 tarefa 6.
+- **Esquema** `Bearer` é aceito em qualquer caixa. No Swagger, o botão **Authorize** recebe o
+  `accessToken` do login.
 
 ---
 
@@ -90,9 +100,20 @@ cada 15 min por IP, somado ao limite global.
 | Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
 |--------|----------|-----------|------------------|------------|
 | POST | `/api/v1/auth/register` | `{ name, email, password }` (body estrito: qualquer outro campo, inclusive `role`, dá **400** `unrecognized_key`) → **201** `{ data: PublicUser }`. `email` é normalizado (trim + minúsculas); `name` com trim, de 2 a 100 caracteres; `password` de 15 a 128 caracteres (code points, após NFKC), sem composição, e recusada com `common_password` se estiver na lista de senhas comuns. Sempre cria `role: "USER"`. **409** `EMAIL_TAKEN` se o e-mail já existe, inclusive em conta excluída. **429** `RATE_LIMITED`. A resposta nunca traz senha nem hash. Idempotência: não idempotente; repetir dá 409. ✅ | pública | MVP · RF-01–RF-06 |
+| POST | `/api/v1/auth/login` | `{ email, password }` (estrito; `email` normalizado como no cadastro; `password` de 1 a 1024 caracteres, sem a política de senha nova) → **200** `{ data: { accessToken, tokenType: "Bearer", expiresIn: 900, refreshToken, user: PublicUser } }`. **401** `INVALID_CREDENTIALS` idêntico para e-mail desconhecido, conta excluída ou senha errada; os três casos custam uma verificação Argon2id, então o tempo de resposta não revela se o e-mail existe. **400** para body mal formado. **429** `RATE_LIMITED`, com cota compartilhada com o cadastro. Idempotência: não idempotente; cada chamada cria uma sessão nova. ✅ | pública | MVP · RF-07, RF-08 |
 
 `PublicUser`: `{ id: uuid, name, email, role: "USER" | "ADMIN", createdAt, updatedAt }`, com
 instantes em ISO 8601 UTC.
+
+---
+
+## Users
+
+Prefixo `/api/v1/users`.
+
+| Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
+|--------|----------|-----------|------------------|------------|
+| GET | `/api/v1/users/me` | Sem body → **200** `{ data: PublicUser }` do dono do token. Resolvido pelo token, nunca por parâmetro. **401** `UNAUTHORIZED`. Idempotência: natural (leitura). ✅ | Bearer (qualquer papel) | MVP · RF-16 |
 
 ---
 

@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 4 de 12 concluídas | Cadastro e Swagger (`/docs`) prontos sobre a fundação, persistência e camada HTTP; próximo: login |
+| API Cadastro MVP | — | 5 de 12 concluídas | Cadastro, login, `/users/me` e Swagger com Authorize prontos; próximo: renovação de sessão e logout |
 
 ## Pronto para implementar
 
