@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 1 de 12 concluídas | Fundação pronta (TypeScript, tooling, env, `/health/live`); próximo: persistência |
+| API Cadastro MVP | — | 2 de 12 concluídas | Fundação e persistência prontas (PostgreSQL + Prisma, `/health/ready`); próximo: camada HTTP |
 
 ## Pronto para implementar
 

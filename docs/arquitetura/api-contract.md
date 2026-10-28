@@ -59,7 +59,7 @@ detalhes internos.
 | Método | Endpoint | Descrição | Auth / permissão | Épico/Spec |
 |--------|----------|-----------|------------------|------------|
 | GET | `/health/live` | Sem body → **200** `{ status: "ok" }`. Não consulta nenhuma dependência. Idempotência: natural (leitura). ✅ | pública | MVP · RF-28 |
-| GET | `/health/ready` | Sem body → **200** quando o banco responde; **503** quando não responde em 2 s. Idempotência: natural (leitura). 🚧 | pública | MVP · RF-29, RF-30 |
+| GET | `/health/ready` | Sem body → **200** `{ status: "ok", checks: { database: "ok" } }` quando o banco responde; **503** `{ status: "unavailable", checks: { database: "unavailable" } }` quando falha ou não responde em 2 s. O corpo nunca traz erro, host nem connection string. Idempotência: natural (leitura). ✅ | pública | MVP · RF-29, RF-30 |
 
 ---
 
