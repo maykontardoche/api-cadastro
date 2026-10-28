@@ -3,7 +3,7 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** A fundação do projeto e a persistência estão prontas. Cadastro,
+> **Status: em desenvolvimento.** A fundação, a persistência e a camada HTTP estão prontas. Cadastro,
 > login, sessões, administração de usuários e a documentação OpenAPI ainda estão sendo
 > construídos. Este README descreve só o que já existe e funciona hoje.
 
@@ -15,6 +15,12 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - `GET /health/live`: indica se o processo está no ar, sem depender do banco.
 - `GET /health/ready`: indica se o banco responde. Retorna `503` quando ele não responde em 2 s,
   sem expor detalhes internos.
+- Erros num formato único (`{ "error": { "code", "message", "requestId", "details" } }`), sem
+  expor stack, SQL ou detalhes internos.
+- `X-Request-Id` em toda resposta, igual ao `requestId` do erro e do log.
+- Logs estruturados em JSON, sem headers, corpo, query string, senhas nem tokens.
+- Rate limit por IP, cabeçalhos de segurança (helmet), CORS restrito às origens configuradas e
+  corpo JSON limitado a 100 kB.
 - Testes unitários e de integração contra um PostgreSQL real.
 
 ## Planejado para o MVP
@@ -23,7 +29,6 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - Sessão com access token curto e refresh token rotativo, com detecção de reutilização.
 - Perfis `USER` e `ADMIN`, com autorização sempre no servidor.
 - Administração de usuários com paginação, busca e exclusão lógica.
-- Erros padronizados, logs estruturados, rate limit e cabeçalhos de segurança.
 - Documentação OpenAPI com Swagger UI.
 - Containers da aplicação e integração contínua no GitHub Actions.
 

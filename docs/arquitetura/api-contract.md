@@ -22,25 +22,43 @@
   `{ data: [], meta: { page, limit, total, totalPages } }`. Ordenação com `?sortBy=&order=`
   restrita a uma whitelist, com desempate por `id`.
 - **Filtros:** `search` com até 100 caracteres. Um parâmetro desconhecido resulta em **400**.
-- **Erro:** envelope próprio
+- **Erro** ✅: envelope próprio
   `{ "error": { "code", "message", "requestId", "details?": [{ "field", "code" }] } }`. A
   mensagem vem em pt-BR e o `code` é estável, em inglês. Um erro inesperado nunca expõe stack,
-  SQL ou detalhe interno.
+  SQL ou detalhe interno. `details` só aparece quando há campos a apontar.
+  - `field`: nome do campo do body (`email`, `profile.name`); `query.<campo>` e
+    `params.<campo>` para query e path; `body` quando o problema é o corpo inteiro.
+  - `details[].code`: o código do Zod (`invalid_type`, `too_small`, `invalid_format`...),
+    `unrecognized_key` (campo não permitido), `invalid_json` (JSON malformado),
+    `invalid_body` (charset ou encoding não suportado) ou `invalid_encoding` (`field: params`,
+    path com percent-encoding malformado).
+  - Todos os problemas de body, query e params vêm juntos num único 400.
 - **Status de recusa:**
 
-  | Status | Quando |
-  |---|---|
-  | 400 | Entrada malformada ou inválida |
-  | 401 | Sem sessão ou credencial inválida |
-  | 403 | Sem permissão |
-  | 404 | Recurso não encontrado |
-  | 409 | Conflito com o estado (`EMAIL_TAKEN`, `LAST_ADMIN`) |
-  | 413 | Payload acima de 100 kB |
-  | 429 | Limite de taxa |
-  | 503 | Dependência indisponível (só no `ready`) |
+  | Status | `code` | Quando |
+  |---|---|---|
+  | 400 | `VALIDATION_ERROR` | Entrada malformada ou inválida, inclusive campo não permitido |
+  | 401 | `UNAUTHORIZED`, `INVALID_CREDENTIALS` | Sem sessão ou credencial inválida |
+  | 403 | `FORBIDDEN` | Sem permissão |
+  | 404 | `NOT_FOUND` | Recurso ou rota inexistente |
+  | 409 | `EMAIL_TAKEN`, `LAST_ADMIN`, `CONFLICT` | Conflito com o estado |
+  | 413 | `PAYLOAD_TOO_LARGE` | Corpo acima de 100 kB |
+  | 429 | `RATE_LIMITED` | Limite de taxa excedido |
+  | 500 | `INTERNAL` | Falha inesperada (mensagem genérica) |
+  | 503 | — | Dependência indisponível (só no `ready`, fora do envelope) |
 
-- **Rastreio** 🚧: toda resposta traz `X-Request-Id`, gerado pelo servidor; o valor enviado pelo
-  cliente é ignorado. Ainda não implementado: hoje o `/health/live` responde sem esse header.
+- **Rastreio** ✅: toda resposta, inclusive as de erro e de health, traz `X-Request-Id` (UUID
+  gerado pelo servidor). O valor enviado pelo cliente é ignorado. O mesmo id aparece no
+  `requestId` do erro e no log da requisição.
+- **Limite de taxa** ✅: o limite global é de 300 requisições a cada 15 min por IP, para todas as
+  rotas exceto `/health/*` (inclui `/api/v1`, rotas inexistentes e preflight de CORS). Rotas de
+  credencial terão um limite próprio de 20 a cada 15 min por IP. Cabeçalhos `RateLimit` e
+  `RateLimit-Policy` (IETF draft-8). O contador fica em memória: vale para uma instância só.
+- **Cabeçalhos de segurança** ✅: helmet com os padrões dele (CSP, `X-Content-Type-Options:
+  nosniff`, HSTS etc.) e sem `X-Powered-By`.
+- **CORS** ✅: só as origens de `CORS_ORIGINS`, e só fora de `/health/*` (os probes não são
+  chamados por navegador). Outra origem não recebe `Access-Control-Allow-Origin`. Sem
+  credenciais (cookies) no CORS.
 - **Idempotência:** `logout` e `DELETE` são idempotentes por natureza. Não há `Idempotency-Key`.
 
 ## Autenticação

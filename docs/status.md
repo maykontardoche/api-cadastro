@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 2 de 12 concluídas | Fundação e persistência prontas (PostgreSQL + Prisma, `/health/ready`); próximo: camada HTTP |
+| API Cadastro MVP | — | 3 de 12 concluídas | Fundação, persistência e camada HTTP (erros, logs, rate limit, CORS) prontas; próximo: cadastro |
 
 ## Pronto para implementar
 
