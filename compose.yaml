@@ -1,12 +1,13 @@
 name: api-cadastro
 
 # Local, throwaway databases only. Credentials below are NOT for any shared or production use.
+# DB_PASSWORD can override the local default; db and api read the same value.
 services:
   db:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: app_local_only
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app_local_only}
       POSTGRES_DB: api_cadastro
     ports:
       - '127.0.0.1:5432:5432'
@@ -34,6 +35,44 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # The API. Secrets come from .env (JWT_ACCESS_SECRET is required); the database address is
+  # fixed here because inside the network the database is `db`, not 127.0.0.1.
+  api:
+    build:
+      context: .
+      target: runtime
+    image: api-cadastro:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-app_local_only}@db:5432/api_cadastro?schema=public
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Explicit migration step, never run on `up`: `docker compose run --rm migrate`.
+  # `prisma migrate deploy` only applies pending migrations; it never resets or drops data.
+  migrate:
+    profiles: ['tools']
+    build:
+      context: .
+      target: build
+    image: api-cadastro:build
+    user: node
+    command: ['npm', 'run', 'db:deploy']
+    environment:
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-app_local_only}@db:5432/api_cadastro?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   db-data:
