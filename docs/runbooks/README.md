@@ -7,4 +7,4 @@ auditoria de observabilidade.
 
 | Runbook | Serviço | Alertas cobertos |
 |---|---|---|
-| — | — | — |
+| [Reset do banco local](reset-banco-local.md) | PostgreSQL local (`db` do Compose) | Nenhum (procedimento manual, destrutivo) |
