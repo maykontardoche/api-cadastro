@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 8 de 12 concluídas | Capacidades do USER, primeiro admin (seed) e listagem de usuários prontas; próximo: gestão de usuário pelo admin e último admin |
+| API Cadastro MVP | — | 9 de 12 concluídas | Toda a API do MVP pronta (USER e ADMIN, com a garantia do último admin); próximo: consolidação da documentação da API |
 
 ## Pronto para implementar
 

@@ -3,10 +3,9 @@
 API REST de cadastro e gestão de usuários em Node.js e TypeScript, com PostgreSQL. O objetivo é
 ser uma API segura por padrão, persistente, testada e reproduzível a partir de um clone limpo.
 
-> **Status: em desenvolvimento.** Todas as capacidades do usuário comum estão prontas, além do
-> primeiro administrador e da listagem de usuários. Consulta, edição, mudança de papel e exclusão
-> de usuários pelo admin ainda estão sendo construídas. Este README descreve só o que já existe e
-> funciona hoje.
+> **Status: em desenvolvimento.** Todas as funcionalidades da API do MVP estão prontas e
+> testadas, para USER e ADMIN. Faltam os containers da aplicação, a integração contínua e o README
+> final. Este README descreve só o que já existe e funciona hoje.
 
 ## O que já funciona
 
@@ -34,6 +33,14 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 - **Listagem de usuários** (`GET /api/v1/users`, só ADMIN): paginada (20 por página, até 100),
   com busca por nome ou e-mail e ordenação por `name`, `email` ou `createdAt`. Usuários excluídos
   não aparecem. Um USER recebe `403`, e um admin rebaixado perde o acesso na hora.
+- **Gestão de um usuário pelo ADMIN** (`/api/v1/users/{id}`): consulta, edição de nome e e-mail,
+  mudança de papel (`PATCH …/role`) e exclusão lógica (`DELETE`). A exclusão encerra todas as
+  sessões, impede o login e mantém o e-mail reservado.
+- **Nunca zero administradores**: o último ADMIN ativo não pode ser rebaixado nem excluído, nem
+  por ele mesmo. A garantia vale também sob operações simultâneas: dois admins rebaixando um ao
+  outro ao mesmo tempo deixam exatamente um.
+- **Trilha de auditoria nos logs**: edição, mudança de papel e exclusão por admin registram quem
+  fez (`actorId`) e em quem (`targetId`), sem dados pessoais.
 - **Swagger UI em `/docs`**: lista os endpoints e permite testá-los no navegador. O documento
   OpenAPI 3.1 fica em `/openapi.json` e é gerado do próprio código, então não diverge do
   comportamento.
@@ -53,9 +60,8 @@ ser uma API segura por padrão, persistente, testada e reproduzível a partir de
 
 ## Planejado para o MVP
 
-- Administração de um usuário pelo ADMIN: consulta, edição, mudança de papel e exclusão lógica,
-  sem nunca deixar o sistema sem administrador.
 - Containers da aplicação e integração contínua no GitHub Actions.
+- README final, com o passo a passo completo e exemplos de todos os endpoints.
 
 ## Stack
 
