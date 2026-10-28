@@ -8,7 +8,7 @@
 
 | Feature | Pasta | Tarefas | Observação |
 |---|---|---|---|
-| API Cadastro MVP | — | 10 de 12 concluídas | API do MVP pronta e documentada (OpenAPI 3.1 validado, Swagger testado rota a rota); próximo: containers e CI |
+| API Cadastro MVP | — | 11 de 12 concluídas | API do MVP pronta, documentada e em container, com CI verde no GitHub Actions; próximo: README final |
 
 ## Pronto para implementar
 
