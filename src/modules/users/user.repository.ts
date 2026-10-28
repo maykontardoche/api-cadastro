@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient, type User } from '../../generated/prisma/client.js';
+import type { USER_SORT_FIELDS } from './user.schema.js';
 
 /** A user as seen by request handlers: the password hash never leaves the repository. */
 export type UserWithoutSecrets = Omit<User, 'passwordHash'>;
@@ -12,6 +13,14 @@ export interface NewUser {
 export interface ProfileChanges {
   name?: string;
   email?: string;
+}
+
+export interface UserListFilter {
+  page: number;
+  limit: number;
+  search?: string | undefined;
+  sortBy: (typeof USER_SORT_FIELDS)[number];
+  order: 'asc' | 'desc';
 }
 
 export interface UserRepository {
@@ -33,11 +42,24 @@ export interface UserRepository {
    * concurrent password changes cannot both succeed. Returns whether it replaced it.
    */
   replacePasswordHash: (id: string, expectedHash: string, newHash: string) => Promise<boolean>;
+  /**
+   * One page of active users plus the total. The two are separate reads: under concurrent writes
+   * the total can differ from the page by the rows changed in between (fine for an admin listing).
+   */
+  listActive: (filter: UserListFilter) => Promise<{ users: UserWithoutSecrets[]; total: number }>;
   /** A repository bound to a transaction opened elsewhere. */
   bindTo: (tx: Prisma.TransactionClient) => UserRepository;
 }
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
+
+/**
+ * Prisma's `contains` becomes ILIKE '%term%' without escaping, so a search for `%` or `_` would
+ * match everything. Backslash is PostgreSQL's default LIKE escape character.
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
 
 function bind(db: DbClient): UserRepository {
   const active = { deletedAt: null };
@@ -68,6 +90,32 @@ function bind(db: DbClient): UserRepository {
         data: { passwordHash: newHash },
       });
       return count === 1;
+    },
+    listActive: async ({ page, limit, search, sortBy, order }) => {
+      const term = search === undefined ? undefined : escapeLike(search);
+      const where: Prisma.UserWhereInput = {
+        ...active,
+        ...(term
+          ? {
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      };
+      const [users, total] = await Promise.all([
+        db.user.findMany({
+          where,
+          // Ties broken by id, so pages never overlap or skip rows.
+          orderBy: [{ [sortBy]: order }, { id: order }],
+          skip: (page - 1) * limit,
+          take: limit,
+          omit: { passwordHash: true },
+        }),
+        db.user.count({ where }),
+      ]);
+      return { users, total };
     },
     bindTo: (tx) => bind(tx),
   };

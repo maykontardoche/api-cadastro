@@ -25,7 +25,8 @@
     "test:integration": "vitest run --project integration",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "db:seed:admin": "tsx --env-file-if-exists=.env src/scripts/seed-admin.ts"
   },
   "author": "Maykon Tardoche",
   "license": "MIT",

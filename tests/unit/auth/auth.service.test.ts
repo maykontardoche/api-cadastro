@@ -54,6 +54,7 @@ function setup(
     findActiveWithCredentials: notUsed,
     updateProfile: notUsed,
     replacePasswordHash: notUsed,
+    listActive: notUsed,
     bindTo: () => users,
   };
   const sessions: SessionService = {

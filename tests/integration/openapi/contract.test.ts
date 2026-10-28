@@ -1,13 +1,14 @@
 import type { Express } from 'express';
 import request from 'supertest';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildTestApiRoutes } from '../../helpers/api.js';
 import type { ErrorBody } from '../../../src/http/errors.js';
 import { API_PREFIX, type OpenApiDocument } from '../../../src/http/openapi.js';
-import { toOpenApiPath } from '../../../src/http/route.js';
+import { REQUIRED_ROLE_EXTENSION, toOpenApiPath } from '../../../src/http/route.js';
 import { buildTestApp } from '../../helpers/app.js';
-import { createTestPrisma } from '../../helpers/db.js';
+import { createTestPrisma, resetDb } from '../../helpers/db.js';
+import { registerAndLogin } from '../../helpers/sessions.js';
 
 const prisma = createTestPrisma();
 const apiRoutes = buildTestApiRoutes(prisma);
@@ -58,6 +59,10 @@ function documentedRelative(document: OpenApiDocument): string[] {
 }
 
 describe('OpenAPI document', () => {
+  beforeAll(async () => {
+    await resetDb(prisma);
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });
@@ -119,6 +124,63 @@ describe('OpenAPI document', () => {
       'post /api/v1/auth/refresh',
       'post /api/v1/auth/register',
     ]);
+  });
+
+  it('requires ADMIN on every secured route except those any signed-in user may call', async () => {
+    const document = await fetchDocument();
+    const secured = Object.entries(document.paths ?? {}).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(([, operation]) => (operation as { security?: unknown }).security)
+        .map(([method, operation]) => ({
+          key: `${method} ${path}`,
+          role: (operation as Record<string, unknown>)[REQUIRED_ROLE_EXTENSION],
+        })),
+    );
+
+    // Opening a secured route to every role is a deliberate decision: it must be added here too.
+    const ANY_ROLE = [
+      'get /api/v1/users/me',
+      'patch /api/v1/users/me',
+      'post /api/v1/auth/change-password',
+    ];
+    expect(
+      secured
+        .filter((op) => op.role === undefined)
+        .map((op) => op.key)
+        .sort(),
+    ).toEqual([...ANY_ROLE].sort());
+    for (const op of secured.filter((candidate) => !ANY_ROLE.includes(candidate.key))) {
+      expect(op.role, op.key).toBe('ADMIN');
+    }
+  });
+
+  it('answers 403 to a USER token on every route that requires ADMIN, and documents it', async () => {
+    const document = await fetchDocument();
+    const adminOnly = Object.entries(document.paths ?? {}).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(
+          ([, operation]) =>
+            (operation as Record<string, unknown>)[REQUIRED_ROLE_EXTENSION] === 'ADMIN',
+        )
+        .map(([method, operation]) => ({
+          method,
+          path,
+          operation: operation as { responses: object },
+        })),
+    );
+    const user = await registerAndLogin(app);
+
+    expect(adminOnly.length).toBeGreaterThan(0);
+    for (const { method, path, operation } of adminOnly) {
+      expect(operation.responses, `${method} ${path}`).toHaveProperty('403');
+      const concretePath = path.replace(/\{\w+\}/g, '00000000-0000-7000-8000-000000000000');
+      const response = await request(app)
+        [method as 'get'](concretePath)
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({});
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect((response.body as ErrorBody).error.code).toBe('FORBIDDEN');
+    }
   });
 
   it('answers 401 without a token on every secured route, and documents it', async () => {

@@ -2,7 +2,9 @@ import type { OpenAPIRegistry, ResponseConfig } from '@asteasolutions/zod-to-ope
 import type { Request, RequestHandler, Response, Router } from 'express';
 import type { z } from 'zod';
 
-import { errorBodySchema } from './errors.js';
+import type { Role } from '../generated/prisma/client.js';
+import { currentUserOf } from './current-user.js';
+import { AppError, errorBodySchema } from './errors.js';
 import {
   createValidation,
   type ValidatedOf,
@@ -35,11 +37,19 @@ export interface RouteSpec<S extends ValidationSchemas> {
    * `middlewares`, marks the operation as secured in the OpenAPI document and documents the 401.
    */
   access: 'public' | RequestHandler;
+  /**
+   * Role the authenticated user must have, checked right after authentication against the role
+   * re-read from the database (never the token). Requires a non-public `access`.
+   */
+  requireRole?: Role;
   handler: (input: ValidatedOf<S>, req: Request, res: Response) => Promise<void> | void;
 }
 
 /** Name of the security scheme registered in the OpenAPI document. */
 export const BEARER_AUTH = 'bearerAuth';
+/** OpenAPI extension that marks the role an operation requires (checked by the contract test). */
+export const REQUIRED_ROLE_EXTENSION = 'x-required-role';
+const FORBIDDEN_DESCRIPTION = '`FORBIDDEN`: o usuário autenticado não tem o papel exigido.';
 const UNAUTHORIZED_DESCRIPTION =
   '`UNAUTHORIZED`: token ausente, inválido, expirado ou de uma conta que não existe mais.';
 
@@ -59,6 +69,10 @@ export function toOpenApiPath(expressPath: string): string {
 export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): RouteDefinition {
   const validation = createValidation(spec.schemas);
   const authenticate = spec.access === 'public' ? undefined : spec.access;
+  if (spec.requireRole && !authenticate) {
+    throw new Error(`${spec.method} ${spec.path}: requireRole needs an authenticated route`);
+  }
+  const authorize = spec.requireRole ? requireRole(spec.requireRole) : undefined;
 
   return {
     method: spec.method,
@@ -68,6 +82,7 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
         spec.path,
         ...(spec.middlewares ?? []),
         ...(authenticate ? [authenticate] : []),
+        ...(authorize ? [authorize] : []),
         validation.middleware,
         async (req, res) => {
           await spec.handler(validation.read(res), req, res);
@@ -83,7 +98,11 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
             : {}),
         },
       };
-      const errors = authenticate ? { 401: UNAUTHORIZED_DESCRIPTION, ...spec.errors } : spec.errors;
+      const errors = {
+        ...(authenticate ? { 401: UNAUTHORIZED_DESCRIPTION } : {}),
+        ...(authorize ? { 403: FORBIDDEN_DESCRIPTION } : {}),
+        ...spec.errors,
+      };
       for (const [status, description] of Object.entries(errors)) {
         responses[Number(status)] = {
           description,
@@ -97,6 +116,7 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
         summary: spec.summary,
         ...(spec.description ? { description: spec.description } : {}),
         ...(authenticate ? { security: [{ [BEARER_AUTH]: [] }] } : {}),
+        ...(spec.requireRole ? { [REQUIRED_ROLE_EXTENSION]: spec.requireRole } : {}),
         request: {
           ...(spec.schemas.body
             ? { body: { content: { 'application/json': { schema: spec.schemas.body } } } }
@@ -107,6 +127,14 @@ export function defineRoute<S extends ValidationSchemas>(spec: RouteSpec<S>): Ro
         responses,
       });
     },
+  };
+}
+
+/** 403 unless the authenticated user (as re-read by authentication) has the role. */
+function requireRole(role: Role): RequestHandler {
+  return (_req, res, next) => {
+    if (currentUserOf(res).role !== role) throw new AppError('FORBIDDEN');
+    next();
   };
 }
 

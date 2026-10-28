@@ -51,6 +51,47 @@ export const publicUserSchema = z
 
 export type PublicUser = z.infer<typeof publicUserSchema>;
 
+export const LIST_DEFAULT_LIMIT = 20;
+export const LIST_MAX_LIMIT = 100;
+/** Caps OFFSET, so a huge page number cannot force the database to skip millions of rows. */
+export const LIST_MAX_PAGE = 10_000;
+export const SEARCH_MAX_LENGTH = 100;
+
+/** Only these columns can be sorted on: the client never names a column freely. */
+export const USER_SORT_FIELDS = ['name', 'email', 'createdAt'] as const;
+
+export const listUsersQuerySchema = z
+  .strictObject({
+    page: z.coerce.number().int().min(1).max(LIST_MAX_PAGE).default(1),
+    limit: z.coerce.number().int().min(1).max(LIST_MAX_LIMIT).default(LIST_DEFAULT_LIMIT),
+    search: z
+      .string()
+      .trim()
+      .min(1)
+      .max(SEARCH_MAX_LENGTH)
+      .optional()
+      .meta({ description: 'Parte do nome ou do e-mail, sem diferenciar maiúsculas.' }),
+    sortBy: z.enum(USER_SORT_FIELDS).default('createdAt'),
+    order: z.enum(['asc', 'desc']).default('desc'),
+  })
+  .meta({ id: 'ListUsersQuery' });
+
+export type ListUsersQuery = z.output<typeof listUsersQuerySchema>;
+
+export const usersPageSchema = z
+  .object({
+    data: z.array(publicUserSchema),
+    meta: z.object({
+      page: z.number().int(),
+      limit: z.number().int(),
+      total: z.number().int(),
+      totalPages: z.number().int(),
+    }),
+  })
+  .meta({ id: 'UsersPage' });
+
+export type UsersPage = z.infer<typeof usersPageSchema>;
+
 /** The only shape of a user that leaves the API: no password hash, no deletion marker. */
 export function toPublicUser(user: Omit<User, 'passwordHash'>): PublicUser {
   return {

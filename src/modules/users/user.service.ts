@@ -1,7 +1,12 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { AppError } from '../../http/errors.js';
 import type { ProfileChanges, UserRepository } from './user.repository.js';
-import { toPublicUser, type PublicUser } from './user.schema.js';
+import {
+  toPublicUser,
+  type ListUsersQuery,
+  type PublicUser,
+  type UsersPage,
+} from './user.schema.js';
 
 export interface RegisterInput {
   name: string;
@@ -13,6 +18,8 @@ export interface UserService {
   register: (input: RegisterInput) => Promise<PublicUser>;
   /** Name and email only; role, id, password and dates are not reachable from here. */
   updateSelf: (userId: string, changes: ProfileChanges) => Promise<PublicUser>;
+  /** Active users only; soft-deleted ones are invisible here and in the total. */
+  list: (query: ListUsersQuery) => Promise<UsersPage>;
 }
 
 export interface UserServiceDeps {
@@ -37,6 +44,19 @@ export function createUserService({ users, hashPassword }: UserServiceDeps): Use
         if (isUniqueViolation(error)) throw new AppError('EMAIL_TAKEN');
         throw error;
       }
+    },
+
+    async list(query) {
+      const { users: page, total } = await users.listActive(query);
+      return {
+        data: page.map(toPublicUser),
+        meta: {
+          page: query.page,
+          limit: query.limit,
+          total,
+          totalPages: Math.ceil(total / query.limit),
+        },
+      };
     },
 
     async updateSelf(userId, changes) {

@@ -4,7 +4,14 @@ import { z } from 'zod';
 import { currentUserOf } from '../../http/current-user.js';
 import { customIssue } from '../../http/errors.js';
 import { defineRoute, type RouteDefinition } from '../../http/route.js';
-import { emailSchema, nameSchema, publicUserSchema, toPublicUser } from './user.schema.js';
+import {
+  emailSchema,
+  listUsersQuerySchema,
+  nameSchema,
+  publicUserSchema,
+  toPublicUser,
+  usersPageSchema,
+} from './user.schema.js';
 import type { UserService } from './user.service.js';
 
 /** Only name and email; any other field (role, id, password, dates) is an unknown key → 400. */
@@ -26,6 +33,24 @@ export interface UserRoutesDeps {
 
 export function createUserRoutes({ userService, authenticate }: UserRoutesDeps): RouteDefinition[] {
   return [
+    defineRoute({
+      method: 'get',
+      path: '/users',
+      tags: ['Users (admin)'],
+      summary: 'Lista usuários (paginado)',
+      description:
+        'Só ADMIN. Usuários excluídos não aparecem nem contam no total. Ordenação só pelos campos listados, com desempate por id; qualquer parâmetro fora da lista resulta em 400.',
+      schemas: { query: listUsersQuerySchema },
+      access: authenticate,
+      requireRole: 'ADMIN',
+      success: { status: 200, description: 'Uma página de usuários.', schema: usersPageSchema },
+      errors: {
+        400: 'Parâmetro desconhecido ou fora dos limites (page, limit, search, sortBy, order).',
+      },
+      handler: async ({ query }, _req, res) => {
+        res.status(200).json(await userService.list(query));
+      },
+    }),
     defineRoute({
       method: 'get',
       path: '/users/me',
